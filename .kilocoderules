@@ -1,0 +1,28 @@
+# System & Token Rules: Next.js + Supabase
+
+## Token & Output Optimization
+- Be extremely concise. Omit greetings, intros, and post-code summaries.
+- Output ONLY modified code snippets, file paths, or diffs. Do not rewrite unchanged code.
+- Limit technical explanations to a maximum of 2 sentences per response.
+
+## Tech Stack & Architecture
+- Framework: Next.js (App Router, React 19 / Server Components by default).
+- Database & Auth: Supabase using `@supabase/ssr` package.
+- Styling: Tailwind CSS.
+- Language: TypeScript (Strict typing required).
+
+## Next.js Best Practices
+- Keep components as React Server Components (RSC) by default.
+- Add `'use client'` ONLY when using client hooks (`useState`, `useEffect`, event handlers).
+- Use Server Actions (`'use server'`) for data mutations instead of API Route Handlers where applicable.
+- Handle dynamic parameters asynchronously using `await params` and `await searchParams`.
+
+## Supabase Best Practices
+- Never use legacy `@supabase/auth-helpers-nextjs`. ALWAYS use `@supabase/ssr`.
+- Use `createClient` from browser/server/middleware helper utilities depending on context.
+- Ensure all Supabase queries handle errors explicitly (`const { data, error } = await supabase...`).
+- Respect Row Level Security (RLS) rules and type-safe database schemas.
+
+## Code Quality & Safety
+- Include clean error handling (`try/catch` or error boundaries) for all async actions.
+- Avoid raw SQL scripts unless explicitly asked; prefer Supabase JS Client methods.
