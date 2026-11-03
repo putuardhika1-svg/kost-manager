@@ -20,7 +20,7 @@ export function RequirementList({
           <li
             key={item.key}
             className="row between"
-            style={{ gap: 12, padding: "8px 0", borderBottom: "1px solid #eceef1" }}
+            style={{ gap: 12, padding: "8px 0", borderBottom: "1px solid var(--line)" }}
           >
             <div>
               <div style={{ fontWeight: 600 }}>{item.label}</div>

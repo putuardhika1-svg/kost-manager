@@ -55,7 +55,7 @@ export default async function RegisterPage({
         <div className="brand" style={{ padding: 0, marginBottom: 14 }}>
           <div className="brand-mark">KM</div>
           <div>
-            <div className="brand-name" style={{ color: "#14181f" }}>
+            <div className="brand-name" style={{ color: "var(--ink)" }}>
               KostManager
             </div>
             <div className="brand-sub">Pendaftaran penyewa</div>

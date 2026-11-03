@@ -43,7 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="sidebar-footer">
-          <div style={{ color: "#fff", fontWeight: 600 }}>{user.name}</div>
+          <div style={{ color: "#f6ead8", fontWeight: 600 }}>{user.name}</div>
           <div>{roleLabel}</div>
         </div>
       </aside>

@@ -242,7 +242,7 @@ export default async function PropertyDetailPage({
           </div>
         )}
 
-        <div className="card-body" style={{ borderTop: "1px solid #e6e8eb" }}>
+        <div className="card-body" style={{ borderTop: "1px solid var(--line)" }}>
           <form action={createPaymentChannelAction}>
             <input type="hidden" name="propertyId" value={property.id} />
             <div className="form-grid">
