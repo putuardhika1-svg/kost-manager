@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT } from "jose";
@@ -55,7 +56,7 @@ export async function getSession(): Promise<SessionPayload | null> {
 
 export type CurrentUser = User & { properties: UserProperty[]; tenant: Tenant | null };
 
-export async function requireUser(): Promise<CurrentUser> {
+export const requireUser = cache(async (): Promise<CurrentUser> => {
   const session = await getSession();
   if (!session) redirect("/login");
   const user = await prisma.user.findUnique({
@@ -64,7 +65,7 @@ export async function requireUser(): Promise<CurrentUser> {
   });
   if (!user || !user.isActive) redirect("/login?err=Sesi+tidak+valid");
   return user;
-}
+});
 
 export async function requireRole(roles: string[]): Promise<CurrentUser> {
   const user = await requireUser();

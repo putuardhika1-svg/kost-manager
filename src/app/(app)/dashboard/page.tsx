@@ -31,16 +31,15 @@ export default async function DashboardPage({
 
   const scope = await propertyScope(user);
 
-  await markOverdue();
-
   const now = new Date();
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth() + 1;
   const monthStart = monthStartUTC(year, month);
   const today = startOfTodayUTC();
 
-  const [rooms, properties, revenue, arrears, dueSoon, overdueTop, recentPayments, openTickets] =
+  const [, rooms, properties, revenue, arrears, dueSoon, overdueTop, recentPayments, openTickets] =
     await Promise.all([
+      markOverdue(),
       prisma.room.findMany({
         where: { ...roomScopeWhere(scope), status: { not: "nonaktif" } },
         select: { status: true },
