@@ -118,12 +118,16 @@ SUPABASE_STORAGE_BUCKET
 ## 7. Checklist setelah deploy
 
 - [ ] Login owner berhasil.
-- [ ] Buat properti, kamar, penyewa, dan kontrak.
-- [ ] Generate tagihan → terbitkan.
-- [ ] Catat pembayaran tunai dan transfer.
-- [ ] Upload bukti bayar berhasil masuk bucket `payment-proofs` (bukan filesystem Vercel).
+- [ ] Buat properti → atur tarif listrik (Rp/kWh) dan syarat tagihan.
+- [ ] Tambahkan metode pembayaran: rekening bank, QRIS, dan/atau tunai.
+- [ ] Buat kamar, penyewa, dan kontrak (isi angka awal meter).
+- [ ] Penyewa kirim angka meter + foto; admin verifikasi.
+- [ ] Generate tagihan → cek item listrik → terbitkan.
+- [ ] Pastikan tombol terbitkan tertahan jika syarat belum lengkap; coba override dengan alasan.
+- [ ] Catat pembayaran tunai dan transfer/QRIS.
+- [ ] Upload bukti bayar & foto meter masuk bucket `payment-proofs` (bukan filesystem Vercel).
 - [ ] Verifikasi/tolak pembayaran.
-- [ ] Buka bukti bayar dari akun tenant/admin (signed URL).
+- [ ] Buka bukti bayar, foto meter, dan QRIS dari akun tenant/admin (signed URL).
 - [ ] Cek `/laporan` dan ekspor CSV.
 - [ ] Ganti/rotate service role key bila pernah terekspos.
 

@@ -1,6 +1,6 @@
 # KostManager
 
-Aplikasi manajemen kos: properti, kamar, penyewa, kontrak, tagihan sewa, verifikasi pembayaran, tunggakan, perbaikan, laporan, dan portal penyewa.
+Aplikasi manajemen kos: properti, kamar, penyewa, kontrak, tagihan sewa, meter listrik, verifikasi pembayaran, rekening/QRIS/tunai, tunggakan, perbaikan, laporan, dan portal penyewa.
 
 Stack: **Next.js 15 (App Router) + TypeScript + Prisma + Supabase Postgres + Supabase Storage**, deploy di **Vercel**.
 
@@ -54,6 +54,9 @@ src/app/login/        halaman & aksi login
 src/app/api/uploads/  route bukti bayar terautentikasi (signed URL Supabase)
 src/lib/auth.ts       JWT, cookie sesi, RBAC, requireUser/requireRole/requireTenant
 src/lib/billing.ts    generate tagihan, publish, void, pembayaran, verifikasi, reminder
+src/lib/meter.ts      pembacaan kWh, verifikasi, baseline, hitung pemakaian
+src/lib/requirements.ts syarat invoice sebelum diterbitkan
+src/app/(app)/meter/  halaman & aksi meter listrik (admin + penyewa)
 src/lib/scope.ts      filter query sesuai properti yang boleh diakses
 src/lib/storage.ts    Supabase Storage (upload privat + signed URL)
 src/lib/notify.ts     template notifikasi N-01..N-12 (mode simulasi)
@@ -64,14 +67,15 @@ prisma/seed.ts        data demo (destruktif)
 
 ## Alur bisnis singkat
 
-1. Buat properti → kamar.
-2. Daftarkan penyewa → buat kontrak (kamar otomatis `terisi`).
-3. Menu **Tagihan** → *Generate tagihan* untuk bulan berjalan (status `draft`).
-4. Terbitkan tagihan → status `unpaid` + notifikasi N-01 tercatat.
-5. Catat pembayaran tunai (langsung terverifikasi) atau transfer (masuk antrean).
-6. **Pembayaran** → verifikasi/tolak; status tagihan dihitung ulang otomatis.
-7. Tagihan lewat jatuh tempo otomatis jadi `overdue` saat dashboard/tagihan/laporan dibuka.
-8. Penyewa login untuk melihat tagihan sendiri dan mengunggah bukti transfer.
+1. Buat properti → atur **tarif listrik** dan **metode pembayaran** (rekening/QRIS/tunai).
+2. Tambah kamar → daftarkan penyewa → buat kontrak + angka awal meter listrik.
+3. Penyewa membuka **Meter Listrik** → isi angka kWh + foto meter.
+4. Admin membuka **Meter Listrik** → verifikasi/koreksi. Pemakaian dihitung otomatis.
+5. Menu **Tagihan** → *Generate tagihan* (status `draft`). Item listrik ikut ditambahkan jika sudah terverifikasi.
+6. Invoice **tidak bisa diterbitkan** sebelum syarat lengkap (meter, profil bila diaktifkan, metode pembayaran). Admin bisa override dengan alasan.
+7. Setelah diterbitkan (`unpaid`), penyewa melihat rekening/QRIS/tunai dan mengunggah bukti.
+8. Admin memverifikasi pembayaran; status tagihan dihitung ulang otomatis.
+9. Tagihan lewat jatuh tempo otomatis jadi `overdue` saat dashboard/tagihan/laporan dibuka.
 
 ## Keamanan
 
@@ -79,7 +83,7 @@ prisma/seed.ts        data demo (destruktif)
 - Sesi JWT HS256 di cookie `httpOnly`, `sameSite=lax`, 12 jam.
 - Middleware memeriksa token sebelum halaman dirender.
 - Setiap query difilter `propertyScope`; tenant hanya melihat data miliknya.
-- Bukti bayar disimpan privat di Supabase Storage dan diakses lewat signed URL sementara.
+- Bukti bayar, foto meter, dan QRIS disimpan privat di Supabase Storage; akses lewat signed URL sementara dan dicek kepemilikannya.
 - Login dibatasi 5 percobaan gagal per 15 menit (rate limit in-memory).
 - Semua aksi penting dicatat di `AuditLog`.
 

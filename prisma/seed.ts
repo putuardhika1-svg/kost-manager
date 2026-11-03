@@ -91,6 +91,7 @@ async function main() {
       address: "Jl. Kaliurang KM 5 No. 12",
       city: "Yogyakarta",
       notes: "Kost putri, 8 kamar, dekat kampus.",
+      electricityTariff: 1500,
     },
   });
 
@@ -101,6 +102,7 @@ async function main() {
       address: "Jl. Dipatiukur No. 88",
       city: "Bandung",
       notes: "Kost campur, 6 kamar, dekat pusat kota.",
+      electricityTariff: 1500,
     },
   });
 
@@ -110,6 +112,62 @@ async function main() {
       { userId: staff.id, propertyId: mawar.id },
       { userId: staff.id, propertyId: melati.id },
     ],
+  });
+
+  // Isi data rekening di sini. QRIS ditambahkan lewat Properti → Metode pembayaran
+  // karena wajib berupa gambar unggahan.
+  const PAYMENT_CHANNELS: Array<{
+    propertyCode: string;
+    type: "bank" | "qris" | "cash";
+    label: string;
+    bankName?: string;
+    accountNumber?: string;
+    accountHolder?: string;
+    qrisUrl?: string;
+    instructions?: string;
+    isActive?: boolean;
+  }> = [
+    {
+      propertyCode: "MWR",
+      type: "bank",
+      label: "BCA a.n. NAMA ANDA",
+      bankName: "BCA",
+      accountNumber: "0000000000",
+      accountHolder: "NAMA PEMILIK REKENING",
+    },
+    {
+      propertyCode: "MWR",
+      type: "cash",
+      label: "Tunai di kantor",
+      instructions: "Bayar tunai di kantor, Senin–Sabtu 08.00–17.00.",
+    },
+    {
+      propertyCode: "MLT",
+      type: "bank",
+      label: "Mandiri a.n. NAMA ANDA",
+      bankName: "Mandiri",
+      accountNumber: "0000000000",
+      accountHolder: "NAMA PEMILIK REKENING",
+    },
+    {
+      propertyCode: "MLT",
+      type: "cash",
+      label: "Tunai di kantor",
+      instructions: "Bayar tunai di kantor, Senin–Sabtu 08.00–17.00.",
+    },
+  ];
+
+  const propertyIdByCode = new Map([
+    [mawar.code, mawar.id],
+    [melati.code, melati.id],
+  ]);
+
+  await prisma.paymentChannel.createMany({
+    data: PAYMENT_CHANNELS.map(({ propertyCode, ...channel }, index) => {
+      const propertyId = propertyIdByCode.get(propertyCode);
+      if (!propertyId) throw new Error(`Kode properti tidak dikenal: ${propertyCode}`);
+      return { ...channel, propertyId, sortOrder: index };
+    }),
   });
 
   const mawarRooms = [
@@ -221,6 +279,7 @@ async function main() {
         rentAmount: room.monthlyPrice,
         deposit: room.monthlyPrice,
         billingDay: 1,
+        electricityStartReading: 1000 + index * 100,
         status: "active",
         notes: "Kontrak demo 12 bulan",
       },

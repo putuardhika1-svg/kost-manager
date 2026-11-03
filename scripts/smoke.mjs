@@ -28,7 +28,9 @@ const token = await new SignJWT({ sub: user.id, role: user.role, email: user.ema
 
 const cookie = `km_session=${token}`;
 
-const pages = ["/dashboard", "/kamar", "/tagihan", "/pembayaran", "/penyewa", "/kontrak", "/properti", "/maintenance", "/laporan", "/pengaturan"];
+const pages = ["/dashboard", "/kamar",   "/tagihan",
+  "/meter",
+  "/pembayaran", "/penyewa", "/kontrak", "/properti", "/maintenance", "/laporan", "/pengaturan"];
 for (const path of pages) {
   const response = await fetch(`${BASE}${path}`, { headers: { cookie }, redirect: "manual" });
   const body = await response.text();

@@ -154,9 +154,10 @@ export default async function TenantDetailPage({
                     <td>
                       <StatusBadge
                         map={{
+                          pending: { label: "Menunggu persetujuan", tone: "amber" },
                           active: { label: "Aktif", tone: "green" },
                           ended: { label: "Selesai", tone: "gray" },
-                          cancelled: { label: "Dibatalkan", tone: "red" },
+                          cancelled: { label: "Ditolak / dibatalkan", tone: "red" },
                         }}
                         value={contract.status}
                       />

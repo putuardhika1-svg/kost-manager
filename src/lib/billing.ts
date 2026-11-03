@@ -3,8 +3,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { logAudit } from "./audit";
 import { sendNotification } from "./notify";
-import { monthLabel, todayUTC } from "./format";
+import { monthLabel, rupiah, todayUTC } from "./format";
 import { startOfTodayUTC } from "./dates";
+import { getInvoiceRequirements } from "./requirements";
 
 const DAY_MS = 86_400_000;
 
@@ -117,7 +118,7 @@ export async function generateInvoices(opts: {
       const seq = await nextInvoiceSequence(prefix);
       const invoiceNo = `${prefix}${String(seq).padStart(3, "0")}`;
       try {
-        await prisma.invoice.create({
+        const createdInvoice = await prisma.invoice.create({
           data: {
             contractId: contract.id,
             invoiceNo,
@@ -143,6 +144,20 @@ export async function generateInvoices(opts: {
         saved = true;
         created += 1;
         total += rent;
+
+        const verifiedReading = await prisma.meterReading.findFirst({
+          where: {
+            contractId: contract.id,
+            periodStart,
+            status: "verified",
+            isBaseline: false,
+          },
+          orderBy: [{ readingAt: "desc" }, { createdAt: "desc" }],
+        });
+        if (verifiedReading) {
+          await attachReadingItem(verifiedReading.id, createdInvoice.id, opts.userId ?? null);
+          total += verifiedReading.amount;
+        }
       } catch (error) {
         if (!isUniqueViolation(error)) throw error;
         const duplicate = await prisma.invoice.findFirst({
@@ -205,7 +220,87 @@ export async function recomputeInvoice(invoiceId: string): Promise<void> {
   });
 }
 
-export async function publishInvoice(invoiceId: string, userId: string): Promise<void> {
+async function attachReadingItem(
+  readingId: string,
+  invoiceId: string,
+  userId: string | null,
+): Promise<void> {
+  const reading = await prisma.meterReading.findUnique({
+    where: { id: readingId },
+    include: { invoiceItem: true },
+  });
+  if (!reading || reading.isBaseline) return;
+  if (reading.status !== "verified" && reading.status !== "billed") return;
+  if (reading.invoiceItem && reading.invoiceItem.invoiceId !== invoiceId) {
+    throw new Error("Pembacaan meter sudah terhubung ke tagihan lain");
+  }
+
+  if (!reading.invoiceItem) {
+    await prisma.invoiceItem.create({
+      data: {
+        invoiceId,
+        description: `Listrik ${reading.usageKwh} kWh × ${rupiah(reading.tariffPerKwh)}`,
+        type: "utility",
+        amount: reading.amount,
+        meterReadingId: reading.id,
+      },
+    });
+  }
+
+  await prisma.meterReading.update({
+    where: { id: reading.id },
+    data: { status: "billed", invoiceId, billedAt: reading.billedAt ?? new Date() },
+  });
+  await recomputeInvoice(invoiceId);
+
+  if (userId) {
+    await logAudit({
+      userId,
+      action: "meter.bill",
+      entity: "MeterReading",
+      entityId: reading.id,
+      payload: { invoiceId, usageKwh: reading.usageKwh, amount: reading.amount },
+    });
+  }
+}
+
+/** Menambahkan pemakaian listrik terverifikasi ke invoice periode yang sama. */
+export async function attachMeterReadingToInvoice(
+  readingId: string,
+  userId: string,
+): Promise<string | null> {
+  const reading = await prisma.meterReading.findUnique({
+    where: { id: readingId },
+    include: { invoiceItem: true },
+  });
+  if (!reading || reading.isBaseline) return null;
+
+  if (reading.invoiceItem) {
+    return reading.invoiceId ?? null;
+  }
+  if (reading.status !== "verified") return null;
+  if (!reading.contractId) return null;
+
+  const invoice = await prisma.invoice.findFirst({
+    where: {
+      contractId: reading.contractId,
+      periodStart: reading.periodStart,
+      status: { in: ["draft", "unpaid", "overdue"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (!invoice) return null;
+
+  await attachReadingItem(reading.id, invoice.id, userId);
+  return invoice.id;
+}
+
+export async function publishInvoice(
+  invoiceId: string,
+  userId: string,
+  options?: { force?: boolean; reason?: string },
+): Promise<void> {
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
     include: {
@@ -215,9 +310,31 @@ export async function publishInvoice(invoiceId: string, userId: string): Promise
   if (!invoice) throw new Error("Tagihan tidak ditemukan");
   if (invoice.status !== "draft") throw new Error("Hanya tagihan berstatus draft yang dapat diterbitkan");
 
+  const requirements = await getInvoiceRequirements(invoiceId);
+  if (requirements && !requirements.complete && !options?.force) {
+    const missing = requirements.items
+      .filter((item) => !item.ok)
+      .map((item) => item.label)
+      .join(", ");
+    throw new Error(`Syarat belum lengkap: ${missing}`);
+  }
+
+  let waivedReason: string | null = null;
+  if (options?.force) {
+    waivedReason = (options.reason ?? "").trim();
+    if (waivedReason.length < 5) throw new Error("Alasan override minimal 5 karakter");
+    if (waivedReason.length > 300) throw new Error("Alasan override maksimal 300 karakter");
+  }
+
   await prisma.invoice.update({
     where: { id: invoiceId },
-    data: { status: "unpaid", issueDate: new Date() },
+    data: {
+      status: "unpaid",
+      issueDate: new Date(),
+      publishedAt: new Date(),
+      requirementsWaivedReason: waivedReason,
+      requirementsWaivedById: waivedReason ? userId : null,
+    },
   });
 
   await sendNotification({
@@ -242,7 +359,11 @@ export async function publishInvoice(invoiceId: string, userId: string): Promise
     action: "invoice.publish",
     entity: "Invoice",
     entityId: invoiceId,
-    payload: { invoiceNo: invoice.invoiceNo, total: invoice.total },
+    payload: {
+      invoiceNo: invoice.invoiceNo,
+      total: invoice.total,
+      waivedReason,
+    },
   });
 }
 
@@ -322,6 +443,12 @@ export async function removeInvoiceItem(itemId: string, userId: string): Promise
   }
 
   await prisma.invoiceItem.delete({ where: { id: itemId } });
+  if (item.meterReadingId) {
+    await prisma.meterReading.update({
+      where: { id: item.meterReadingId },
+      data: { status: "verified", invoiceId: null, billedAt: null },
+    });
+  }
   await recomputeInvoice(item.invoiceId);
 
   await logAudit({
@@ -335,6 +462,7 @@ export async function removeInvoiceItem(itemId: string, userId: string): Promise
 
 export type RecordPaymentInput = {
   invoiceId: string;
+  channelId?: string | null;
   method: string;
   amount: number;
   paidAt: Date;
@@ -379,12 +507,32 @@ export async function recordPayment(
     );
   }
 
-  const isCash = input.method === "cash" && !input.byTenant;
+  let method = input.method;
+  if (input.channelId) {
+    const channel = await prisma.paymentChannel.findUnique({
+      where: { id: input.channelId },
+      select: { propertyId: true, type: true, isActive: true, label: true },
+    });
+    if (
+      !channel ||
+      channel.propertyId !== invoice.contract.room.propertyId ||
+      !channel.isActive
+    ) {
+      throw new Error("Metode pembayaran tidak valid atau sudah nonaktif");
+    }
+    if (input.byTenant && channel.type === "cash") {
+      throw new Error("Pembayaran tunai dicatat oleh admin setelah uang diterima");
+    }
+    method = channel.type === "bank" ? "transfer" : channel.type;
+  }
+
+  const isCash = method === "cash" && !input.byTenant;
 
   await prisma.payment.create({
     data: {
       invoiceId: input.invoiceId,
-      method: input.method,
+      channelId: input.channelId ?? null,
+      method,
       amount: input.amount,
       paidAt: input.paidAt,
       proofUrl: input.proofUrl ?? null,

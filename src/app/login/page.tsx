@@ -5,7 +5,7 @@ import { loginAction } from "./actions";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ err?: string; next?: string }>;
+  searchParams: Promise<{ err?: string; next?: string; ok?: string }>;
 }) {
   const params = await searchParams;
 
@@ -26,6 +26,7 @@ export default async function LoginPage({
         <div className="auth-sub">Kelola kamar, tagihan, dan pembayaran kost Anda.</div>
 
         <Alert tone="error" message={params.err} />
+        <Alert tone="success" message={params.ok} />
 
         <form action={loginAction}>
           <input type="hidden" name="next" value={params.next ?? "/dashboard"} />
@@ -43,6 +44,10 @@ export default async function LoginPage({
             </button>
           </div>
         </form>
+
+        <div className="small muted" style={{ marginTop: 14, textAlign: "center" }}>
+          Belum punya akun? <Link href="/daftar">Daftar sebagai penyewa</Link>
+        </div>
 
         {process.env.NODE_ENV !== "production" ? (
           <div className="auth-demo">

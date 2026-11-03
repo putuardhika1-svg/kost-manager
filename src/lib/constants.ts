@@ -31,7 +31,8 @@ export const PAYMENT_STATUS: Record<string, { label: string; tone: Tone }> = {
 
 export const PAYMENT_METHODS: Record<string, string> = {
   cash: "Tunai",
-  transfer: "Transfer",
+  transfer: "Transfer bank",
+  qris: "QRIS",
   gateway: "Payment gateway",
 };
 
@@ -63,6 +64,25 @@ export const MAINT_CATEGORIES = [
   "perabot",
   "keamanan",
 ] as const;
+
+export const METER_STATUS: Record<string, { label: string; tone: Tone }> = {
+  pending: { label: "Menunggu verifikasi", tone: "amber" },
+  verified: { label: "Terverifikasi", tone: "green" },
+  rejected: { label: "Ditolak", tone: "red" },
+  billed: { label: "Sudah ditagih", tone: "blue" },
+};
+
+export const METER_SOURCES: Record<string, string> = {
+  tenant: "Penyewa",
+  staff: "Staff",
+  admin: "Admin",
+};
+
+export const PAYMENT_CHANNEL_TYPES: Record<string, { label: string; tone: Tone }> = {
+  bank: { label: "Transfer bank", tone: "blue" },
+  qris: { label: "QRIS", tone: "green" },
+  cash: { label: "Tunai", tone: "amber" },
+};
 
 export const NOTIFICATION_STATUS: Record<string, { label: string; tone: Tone }> = {
   queued: { label: "Antre", tone: "gray" },

@@ -12,6 +12,7 @@ const NAV: NavItem[] = [
   { href: "/penyewa", label: "Penyewa", roles: ["owner", "admin"] },
   { href: "/kontrak", label: "Kontrak", roles: ["owner", "admin"] },
   { href: "/tagihan", label: "Tagihan", roles: ["owner", "admin", "tenant"] },
+  { href: "/meter", label: "Meter Listrik", roles: ["owner", "admin", "staff", "tenant"] },
   { href: "/pembayaran", label: "Pembayaran", roles: ["owner", "admin"] },
   { href: "/maintenance", label: "Perbaikan", roles: ["owner", "admin", "staff", "tenant"] },
   { href: "/laporan", label: "Laporan", roles: ["owner", "admin"] },

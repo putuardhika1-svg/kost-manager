@@ -27,6 +27,8 @@ model User {
   tenant       Tenant?        @relation("TenantUser", fields: [tenantId], references: [id], onDelete: SetNull)
   properties   UserProperty[]
   payments     Payment[]      @relation("PaymentVerifier")
+  meterReadings MeterReading[] @relation("MeterVerifier")
+  invoiceWaivers Invoice[]    @relation("InvoiceWaiver")
   auditLogs    AuditLog[]
 }
 
@@ -47,9 +49,13 @@ model Property {
   address   String
   city      String
   notes     String?
+  electricityTariff    Int     @default(1500)
+  requireMeterReading  Boolean @default(true)
+  requireTenantProfile Boolean @default(false)
   createdAt DateTime       @default(now())
   rooms     Room[]
   users     UserProperty[]
+  paymentChannels PaymentChannel[]
 }
 
 model Room {
@@ -61,9 +67,11 @@ model Room {
   monthlyPrice Int
   status       String        @default("kosong") // kosong | terisi | booked | perbaikan | nonaktif
   facilities   String? // JSON string array
+  meterSerial  String?
   property     Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   contracts    Contract[]
   maintenance  Maintenance[]
+  meterReadings MeterReading[]
 
   @@unique([propertyId, number])
 }
@@ -81,6 +89,7 @@ model Tenant {
   contracts        Contract[]
   maintenance      Maintenance[]
   notifications    NotificationLog[]
+  meterReadings    MeterReading[]
   user             User?             @relation("TenantUser")
 }
 
@@ -97,11 +106,13 @@ model Contract {
   endedAt          DateTime?
   depositReturned  Int?
   depositDeduction Int?
+  electricityStartReading Float?
   notes            String?
   createdAt        DateTime  @default(now())
   tenant           Tenant    @relation(fields: [tenantId], references: [id])
   room             Room      @relation(fields: [roomId], references: [id])
   invoices         Invoice[]
+  meterReadings    MeterReading[]
 }
 
 model Invoice {
@@ -119,11 +130,16 @@ model Invoice {
   status          String            @default("draft") // draft | unpaid | paid | overdue | void
   voidReason      String?
   source          String            @default("auto") // auto | manual
+  publishedAt     DateTime?
+  requirementsWaivedReason String?
+  requirementsWaivedById   String?
   createdAt       DateTime          @default(now())
   contract        Contract          @relation(fields: [contractId], references: [id])
   items           InvoiceItem[]
   payments        Payment[]
   notifications   NotificationLog[]
+  meterReadings   MeterReading[]
+  requirementsWaivedBy User?       @relation("InvoiceWaiver", fields: [requirementsWaivedById], references: [id])
 
   @@unique([contractId, periodStart])
   @@index([status, dueDate])
@@ -135,13 +151,16 @@ model InvoiceItem {
   description String
   type        String  @default("rent") // rent | utility | penalty | other
   amount      Int
+  meterReadingId String? @unique
   invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  meterReading MeterReading? @relation(fields: [meterReadingId], references: [id])
 }
 
 model Payment {
   id              String    @id @default(cuid())
   invoiceId       String
-  method          String    @default("transfer") // cash | transfer | gateway
+  channelId       String?
+  method          String    @default("transfer") // cash | transfer | qris | gateway
   amount          Int
   paidAt          DateTime
   proofUrl        String?
@@ -152,7 +171,63 @@ model Payment {
   notes           String?
   createdAt       DateTime  @default(now())
   invoice         Invoice   @relation(fields: [invoiceId], references: [id])
+  channel         PaymentChannel? @relation(fields: [channelId], references: [id])
   verifiedBy      User?     @relation("PaymentVerifier", fields: [verifiedById], references: [id])
+}
+
+model PaymentChannel {
+  id            String    @id @default(cuid())
+  propertyId    String
+  type          String    @default("bank") // bank | qris | cash
+  label         String
+  bankName      String?
+  accountNumber String?
+  accountHolder String?
+  qrisUrl       String?
+  instructions  String?
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  property      Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  payments      Payment[]
+
+  @@index([propertyId, isActive])
+}
+
+model MeterReading {
+  id              String    @id @default(cuid())
+  roomId          String
+  contractId      String?
+  tenantId        String?
+  periodStart     DateTime
+  periodEnd       DateTime
+  readingAt       DateTime  @default(now())
+  previousReading Float
+  currentReading  Float
+  usageKwh        Float
+  tariffPerKwh    Int
+  amount          Int
+  photoUrl        String?
+  source          String    @default("tenant") // tenant | staff | admin
+  status          String    @default("pending") // pending | verified | rejected | billed
+  isBaseline      Boolean   @default(false)
+  notes           String?
+  verifiedById    String?
+  verifiedAt      DateTime?
+  rejectionReason String?
+  invoiceId       String?
+  billedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  room            Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  contract        Contract? @relation(fields: [contractId], references: [id])
+  tenant          Tenant?   @relation(fields: [tenantId], references: [id])
+  verifiedBy      User?     @relation("MeterVerifier", fields: [verifiedById], references: [id])
+  invoice         Invoice?  @relation(fields: [invoiceId], references: [id])
+  invoiceItem     InvoiceItem?
+
+  @@index([roomId, readingAt])
+  @@index([status])
+  @@index([contractId, periodStart])
 }
 
 model Maintenance {

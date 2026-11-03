@@ -25,8 +25,11 @@ export async function GET(
     return new NextResponse("Berkas tidak ditemukan", { status: 404 });
   }
 
+  const proofUrl = `/api/uploads/${file}`;
+  let allowed = false;
+
   const payment = await prisma.payment.findFirst({
-    where: { proofUrl: `/api/uploads/${file}` },
+    where: { proofUrl },
     select: {
       invoice: {
         select: {
@@ -40,20 +43,59 @@ export async function GET(
       },
     },
   });
-  if (!payment) {
-    return new NextResponse("Berkas tidak ditemukan", { status: 404 });
-  }
 
-  const contract = payment.invoice.contract;
-  let allowed = user.role === "owner" || (user.role === "tenant" && user.tenant?.id === contract.tenantId);
+  if (payment) {
+    const contract = payment.invoice.contract;
+    allowed =
+      user.role === "owner" ||
+      (user.role === "tenant" && user.tenant?.id === contract.tenantId);
 
-  if (!allowed && (user.role === "admin" || user.role === "staff")) {
-    const scope = await propertyScope(user);
-    allowed = scope === null || scope.includes(contract.room.propertyId);
+    if (!allowed && (user.role === "admin" || user.role === "staff")) {
+      const scope = await propertyScope(user);
+      allowed = scope === null || scope.includes(contract.room.propertyId);
+    }
+  } else {
+    const channel = await prisma.paymentChannel.findFirst({
+      where: { qrisUrl: proofUrl },
+      select: { propertyId: true },
+    });
+    if (channel) {
+      allowed = user.role === "owner";
+      if (!allowed && (user.role === "admin" || user.role === "staff")) {
+        const scope = await propertyScope(user);
+        allowed = scope === null || scope.includes(channel.propertyId);
+      }
+      if (!allowed && user.role === "tenant" && user.tenant) {
+        const contracts = await prisma.contract.count({
+          where: {
+            tenantId: user.tenant.id,
+            room: { propertyId: channel.propertyId },
+          },
+        });
+        allowed = contracts > 0;
+      }
+    } else {
+      const reading = await prisma.meterReading.findFirst({
+        where: { photoUrl: proofUrl },
+        select: {
+          tenantId: true,
+          room: { select: { propertyId: true } },
+        },
+      });
+      if (reading) {
+        allowed =
+          user.role === "owner" ||
+          (user.role === "tenant" && user.tenant?.id === reading.tenantId);
+        if (!allowed && (user.role === "admin" || user.role === "staff")) {
+          const scope = await propertyScope(user);
+          allowed = scope === null || scope.includes(reading.room.propertyId);
+        }
+      }
+    }
   }
 
   if (!allowed) {
-    return new NextResponse("Akses ditolak", { status: 403 });
+    return new NextResponse("Berkas tidak ditemukan", { status: 404 });
   }
 
   if (storageConfigured()) {

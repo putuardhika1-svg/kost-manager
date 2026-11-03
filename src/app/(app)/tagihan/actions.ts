@@ -84,18 +84,21 @@ export async function generateInvoicesAction(formData: FormData): Promise<void> 
 export async function publishInvoiceAction(formData: FormData): Promise<void> {
   const invoiceId = String(formData.get("invoiceId") ?? "");
   await guardManageInvoice(invoiceId);
+  const force = formData.get("force") === "1";
+  const reason = String(formData.get("reason") ?? "").trim();
 
   let error: string | null = null;
   try {
     const user = await requireRole(["owner", "admin"]);
-    await publishInvoice(invoiceId, user.id);
+    await publishInvoice(invoiceId, user.id, { force, reason });
   } catch (err) {
     error = err instanceof Error ? err.message : "Gagal menerbitkan tagihan";
   }
 
-  if (error) redirect(`/tagihan?err=${encodeURIComponent(error)}`);
+  if (error) redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent(error)}`);
   revalidatePath("/tagihan");
-  redirect("/tagihan?ok=Tagihan+diterbitkan+dan+notifikasi+dikirim");
+  revalidatePath(`/tagihan/${invoiceId}`);
+  redirect(`/tagihan/${invoiceId}?ok=Tagihan+diterbitkan+dan+notifikasi+dikirim`);
 }
 
 export async function voidInvoiceAction(formData: FormData): Promise<void> {
@@ -167,6 +170,7 @@ export async function recordPaymentAction(formData: FormData): Promise<void> {
   const parsed = paymentSchema.safeParse({
     invoiceId,
     method: String(formData.get("method") ?? "transfer"),
+    channelId: String(formData.get("channelId") ?? ""),
     amount: formData.get("amount") ?? 0,
     paidAt: String(formData.get("paidAt") ?? ""),
     notes: String(formData.get("notes") ?? "").trim(),
@@ -183,6 +187,7 @@ export async function recordPaymentAction(formData: FormData): Promise<void> {
     await recordPayment(
       {
         invoiceId,
+        channelId: parsed.data.channelId || null,
         method: parsed.data.method,
         amount: parsed.data.amount,
         paidAt,
@@ -228,7 +233,11 @@ export async function tenantUploadProofAction(formData: FormData): Promise<void>
   const invoiceId = String(formData.get("invoiceId") ?? "");
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    select: { id: true, status: true, contract: { select: { tenantId: true } } },
+    select: {
+      id: true,
+      status: true,
+      contract: { select: { tenantId: true, room: { select: { propertyId: true } } } },
+    },
   });
   if (!invoice || invoice.contract.tenantId !== user.tenant.id) {
     redirect("/tagihan?err=Akses+ditolak");
@@ -236,6 +245,7 @@ export async function tenantUploadProofAction(formData: FormData): Promise<void>
 
   const parsed = paymentSchema.safeParse({
     invoiceId,
+    channelId: String(formData.get("channelId") ?? ""),
     method: "transfer",
     amount: formData.get("amount") ?? 0,
     paidAt: String(formData.get("paidAt") ?? ""),
@@ -245,6 +255,25 @@ export async function tenantUploadProofAction(formData: FormData): Promise<void>
     redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent(firstError(parsed.error))}`);
   }
 
+  const channel = parsed.data.channelId
+    ? await prisma.paymentChannel.findUnique({
+        where: { id: parsed.data.channelId },
+        select: { type: true, propertyId: true, isActive: true },
+      })
+    : null;
+  if (
+    !channel ||
+    !channel.isActive ||
+    channel.propertyId !== invoice.contract.room.propertyId ||
+    channel.type === "cash"
+  ) {
+    redirect(
+      `/tagihan/${invoiceId}?err=${encodeURIComponent("Pilih metode transfer/QRIS yang aktif")}`,
+    );
+  }
+
+  const method = channel.type === "bank" ? "transfer" : channel.type;
+
   let error: string | null = null;
   try {
     const proofUrl = await saveUpload(formData.get("proof"), "bukti");
@@ -253,7 +282,8 @@ export async function tenantUploadProofAction(formData: FormData): Promise<void>
     await recordPayment(
       {
         invoiceId,
-        method: "transfer",
+        channelId: parsed.data.channelId,
+        method,
         amount: parsed.data.amount,
         paidAt,
         proofUrl,

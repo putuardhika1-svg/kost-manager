@@ -27,6 +27,7 @@ export default async function PaymentInboxPage({
       },
       include: {
         invoice: { include: { contract: { include: { tenant: true, room: { include: { property: true } } } } } },
+        channel: { select: { label: true } },
         verifiedBy: { select: { name: true } },
       },
       orderBy: { paidAt: "desc" },
@@ -96,6 +97,7 @@ export default async function PaymentInboxPage({
                   <th>Penyewa</th>
                   <th>Tagihan</th>
                   <th>Metode</th>
+                  <th>Kanal</th>
                   <th className="num">Nominal</th>
                   <th>Bukti</th>
                   <th>Status</th>
@@ -117,6 +119,7 @@ export default async function PaymentInboxPage({
                       <Link href={`/tagihan/${payment.invoiceId}`}>{payment.invoice.invoiceNo}</Link>
                     </td>
                     <td>{PAYMENT_METHODS[payment.method] ?? payment.method}</td>
+                    <td className="small">{payment.channel?.label ?? "-"}</td>
                     <td className="num">{rupiah(payment.amount)}</td>
                     <td>
                       {payment.proofUrl ? (

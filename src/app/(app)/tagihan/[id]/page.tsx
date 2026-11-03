@@ -7,10 +7,13 @@ import {
   INVOICE_STATUS,
   ITEM_TYPES,
   NOTIFICATION_STATUS,
+  PAYMENT_CHANNEL_TYPES,
   PAYMENT_METHODS,
   PAYMENT_STATUS,
 } from "@/lib/constants";
-import { Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
+import { Badge, Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
+import { RequirementList } from "@/components/requirements";
+import { getInvoiceRequirements } from "@/lib/requirements";
 import {
   addItemAction,
   publishInvoiceAction,
@@ -46,10 +49,13 @@ export default async function InvoiceDetailPage({
     where: { id },
     include: {
       contract: { include: { tenant: true, room: { include: { property: true } } } },
-      items: true,
+      items: { include: { meterReading: { select: { id: true, photoUrl: true } } } },
       payments: {
         orderBy: { paidAt: "desc" },
-        include: { verifiedBy: { select: { name: true } } },
+        include: {
+          verifiedBy: { select: { name: true } },
+          channel: { select: { label: true, type: true } },
+        },
       },
       notifications: { orderBy: { createdAt: "desc" }, take: 10 },
     },
@@ -57,17 +63,28 @@ export default async function InvoiceDetailPage({
 
   if (!invoice) notFound();
 
+  const propertyId = invoice.contract.room.propertyId;
+
   if (isTenant) {
     if (!user.tenant || invoice.contract.tenantId !== user.tenant.id) {
       redirect("/tagihan?err=Akses+ditolak");
     }
   } else {
     const scope = await propertyScope(user);
-    const propertyId = invoice.contract.room.propertyId;
     if (scope !== null && !scope.includes(propertyId)) {
       redirect("/tagihan?err=Akses+ditolak");
     }
   }
+
+  const [requirements, channels] = await Promise.all([
+    getInvoiceRequirements(invoice.id),
+    prisma.paymentChannel.findMany({
+      where: { propertyId, isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
+  const transferChannels = channels.filter((channel) => channel.type !== "cash");
+  const cashChannels = channels.filter((channel) => channel.type === "cash");
 
   const outstanding = Math.max(0, invoice.total - invoice.paidTotal);
   const pendingTotal = invoice.payments
@@ -94,14 +111,6 @@ export default async function InvoiceDetailPage({
           ← Kembali ke daftar tagihan
         </Link>
         <div className="row" style={{ gap: 8 }}>
-          {canManage && invoice.status === "draft" ? (
-            <form action={publishInvoiceAction}>
-              <input type="hidden" name="invoiceId" value={invoice.id} />
-              <button className="btn btn-sm btn-primary" type="submit">
-                Terbitkan tagihan
-              </button>
-            </form>
-          ) : null}
           {canManage && (invoice.status === "unpaid" || invoice.status === "overdue") ? (
             <form action={sendReminderAction}>
               <input type="hidden" name="invoiceId" value={invoice.id} />
@@ -119,6 +128,66 @@ export default async function InvoiceDetailPage({
         actions={<StatusBadge map={INVOICE_STATUS} value={invoice.status} />}
       />
       <Flash error={flash.err} ok={flash.ok} />
+
+      {requirements ? (
+        <Card
+          title="Syarat penerbitan tagihan"
+          description={
+            invoice.status === "draft"
+              ? "Tagihan belum dapat dibayar sampai syarat berikut lengkap dan admin menerbitkan tagihan."
+              : "Checklist kelengkapan saat tagihan diterbitkan."
+          }
+        >
+          <RequirementList items={requirements.items} waived={requirements.waived} />
+          {canManage && invoice.status === "draft" ? (
+            requirements.complete ? (
+              <form action={publishInvoiceAction} style={{ marginTop: 12 }}>
+                <input type="hidden" name="invoiceId" value={invoice.id} />
+                <button className="btn btn-primary" type="submit">
+                  Terbitkan tagihan
+                </button>
+              </form>
+            ) : (
+              <details style={{ marginTop: 12 }}>
+                <summary className="small" style={{ cursor: "pointer" }}>
+                  Terbitkan dengan override (alasan wajib)
+                </summary>
+                <form action={publishInvoiceAction} style={{ marginTop: 8 }}>
+                  <input type="hidden" name="invoiceId" value={invoice.id} />
+                  <input type="hidden" name="force" value="1" />
+                  <div className="form-grid">
+                    <Field label="Alasan override" full>
+                      <input
+                        name="reason"
+                        required
+                        minLength={5}
+                        maxLength={300}
+                        placeholder="Contoh: meter sudah dicek manual, foto menyusul"
+                      />
+                    </Field>
+                  </div>
+                  <div className="form-actions">
+                    <button className="btn btn-danger" type="submit">
+                      Terbitkan tanpa syarat lengkap
+                    </button>
+                  </div>
+                </form>
+              </details>
+            )
+          ) : null}
+          {isTenant && invoice.status === "draft" ? (
+            <p className="small muted" style={{ marginBottom: 0 }}>
+              Lengkapi pembacaan meter listrik, lalu tunggu admin menerbitkan tagihan.
+              {requirements.items.some((item) => item.key === "meter" && !item.ok) ? (
+                <>
+                  {" "}
+                  <Link href="/meter">Isi meter sekarang →</Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
 
       <div className="grid-2">
         <Card title="Informasi tagihan">
@@ -178,6 +247,7 @@ export default async function InvoiceDetailPage({
                   <tr>
                     <th>Tanggal</th>
                     <th>Metode</th>
+                    <th>Kanal</th>
                     <th className="num">Nominal</th>
                     <th>Status</th>
                     <th>Bukti</th>
@@ -193,6 +263,7 @@ export default async function InvoiceDetailPage({
                         ) : null}
                       </td>
                       <td>{PAYMENT_METHODS[payment.method] ?? payment.method}</td>
+                      <td className="small">{payment.channel?.label ?? "-"}</td>
                       <td className="num">{rupiah(payment.amount)}</td>
                       <td>
                         <StatusBadge map={PAYMENT_STATUS} value={payment.status} />
@@ -236,7 +307,16 @@ export default async function InvoiceDetailPage({
             <tbody>
               {invoice.items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.description}</td>
+                  <td>
+                    {item.description}
+                    {item.meterReading?.photoUrl ? (
+                      <div className="small">
+                        <a href={item.meterReading.photoUrl} target="_blank" rel="noreferrer">
+                          Lihat foto meter
+                        </a>
+                      </div>
+                    ) : null}
+                  </td>
                   <td>{ITEM_TYPES[item.type] ?? item.type}</td>
                   <td className="num">{rupiah(item.amount)}</td>
                   <td className="right">
@@ -259,14 +339,80 @@ export default async function InvoiceDetailPage({
         </div>
       </Card>
 
-      {canTenantPay ? (
+      {invoice.status !== "draft" && invoice.status !== "void" ? (
+        <Card
+          title="Metode pembayaran"
+          description="Gunakan salah satu metode berikut, lalu kirim bukti pembayaran."
+          tight
+        >
+          {channels.length === 0 ? (
+            <Empty
+              title="Belum ada metode pembayaran"
+              description="Hubungi admin untuk informasi rekening, QRIS, atau pembayaran tunai."
+            />
+          ) : (
+            <div className="grid-3">
+              {channels.map((channel) => (
+                <div key={channel.id} className="card" style={{ margin: 0 }}>
+                  <div className="card-body">
+                    <Badge tone={PAYMENT_CHANNEL_TYPES[channel.type]?.tone ?? "gray"}>
+                      {PAYMENT_CHANNEL_TYPES[channel.type]?.label ?? channel.type}
+                    </Badge>
+                    <div style={{ fontWeight: 600, marginTop: 8 }}>{channel.label}</div>
+                    {channel.type === "bank" ? (
+                      <dl className="kv" style={{ marginTop: 8 }}>
+                        <dt>Bank</dt>
+                        <dd>{channel.bankName}</dd>
+                        <dt>No. rekening</dt>
+                        <dd className="mono">{channel.accountNumber}</dd>
+                        <dt>Atas nama</dt>
+                        <dd>{channel.accountHolder}</dd>
+                      </dl>
+                    ) : null}
+                    {channel.type === "qris" && channel.qrisUrl ? (
+                      <a href={channel.qrisUrl} target="_blank" rel="noreferrer">
+                        <img
+                          src={channel.qrisUrl}
+                          alt={`QRIS ${channel.label}`}
+                          style={{ maxWidth: "100%", marginTop: 8, borderRadius: 8 }}
+                        />
+                      </a>
+                    ) : null}
+                    {channel.instructions ? (
+                      <div className="small muted" style={{ marginTop: 8 }}>
+                        {channel.instructions}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {cashChannels.length > 0 ? (
+            <p className="small muted">
+              Pembayaran tunai dicatat oleh admin setelah uang diterima.
+            </p>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {canTenantPay && transferChannels.length > 0 ? (
         <Card
           title="Kirim bukti pembayaran"
-          description="Unggah bukti transfer; admin akan memverifikasi pembayaran Anda."
+          description="Pilih rekening/QRIS yang dipakai, lalu unggah bukti. Admin akan memverifikasi."
         >
-          <form action={tenantUploadProofAction} encType="multipart/form-data">
+          <form action={tenantUploadProofAction}>
             <input type="hidden" name="invoiceId" value={invoice.id} />
             <div className="form-grid">
+              <Field label="Metode pembayaran" full>
+                <select name="channelId" required defaultValue={transferChannels[0]?.id ?? ""}>
+                  {transferChannels.map((channel) => (
+                    <option key={channel.id} value={channel.id}>
+                      {channel.label} — {PAYMENT_CHANNEL_TYPES[channel.type]?.label ?? channel.type}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Nominal transfer (Rp)">
                     <input name="amount" type="number" min={1} defaultValue={availableToPay} required />
               </Field>
@@ -327,12 +473,23 @@ export default async function InvoiceDetailPage({
 
           <Card title="Catat pembayaran">
             {canPay ? (
-              <form action={recordPaymentAction} encType="multipart/form-data">
+              <form action={recordPaymentAction}>
                 <input type="hidden" name="invoiceId" value={invoice.id} />
                 <div className="form-grid">
+                  <Field label="Kanal (opsional)" hint="Jika dipilih, metode mengikuti kanal.">
+                    <select name="channelId" defaultValue="">
+                      <option value="">Manual / tanpa kanal</option>
+                      {channels.map((channel) => (
+                        <option key={channel.id} value={channel.id}>
+                          {channel.label} — {PAYMENT_CHANNEL_TYPES[channel.type]?.label ?? channel.type}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                   <Field label="Metode">
                     <select name="method" defaultValue="transfer">
                       <option value="transfer">Transfer</option>
+                      <option value="qris">QRIS</option>
                       <option value="cash">Tunai</option>
                     </select>
                   </Field>

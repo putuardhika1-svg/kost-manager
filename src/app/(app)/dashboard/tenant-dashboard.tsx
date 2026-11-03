@@ -31,7 +31,8 @@ export async function TenantDashboard({
   const tenant = user.tenant;
   const today = startOfTodayUTC();
 
-  const [invoices, openTickets] = await Promise.all([
+  const [invoices, openTickets, lastReading, pendingReading, latestRegistration, activeContracts] =
+    await Promise.all([
     prisma.invoice.findMany({
       where: { contract: { tenantId: tenant.id } },
       include: { contract: { include: { room: { include: { property: true } } } } },
@@ -43,6 +44,21 @@ export async function TenantDashboard({
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
+    prisma.meterReading.findFirst({
+      where: { tenantId: tenant.id, status: { in: ["verified", "billed"] } },
+      include: { room: { include: { property: true } } },
+      orderBy: [{ readingAt: "desc" }, { createdAt: "desc" }],
+    }),
+    prisma.meterReading.findFirst({
+      where: { tenantId: tenant.id, status: "pending" },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.contract.findFirst({
+      where: { tenantId: tenant.id, status: { in: ["pending", "cancelled"] } },
+      orderBy: { createdAt: "desc" },
+      include: { room: { include: { property: true } } },
+    }),
+    prisma.contract.count({ where: { tenantId: tenant.id, status: "active" } }),
   ]);
 
   const activeInvoices = invoices.filter(
@@ -70,12 +86,81 @@ export async function TenantDashboard({
       />
       <Flash error={flash.err} ok={flash.ok} />
 
+      {activeContracts === 0 && latestRegistration ? (
+        latestRegistration.status === "pending" ? (
+          <Card title="Pendaftaran menunggu persetujuan owner">
+            <p style={{ margin: 0 }}>
+              Kamar <strong>{latestRegistration.room.number}</strong> di{" "}
+              <strong>{latestRegistration.room.property.name}</strong> · mulai{" "}
+              {dateID(latestRegistration.startDate)} ·{" "}
+              {rupiah(latestRegistration.rentAmount)}/bulan.
+            </p>
+            <p className="small muted" style={{ marginBottom: 0 }}>
+              Owner akan memverifikasi pendaftaran Anda. Tagihan dan menu meter aktif setelah
+              kontrak disetujui.
+            </p>
+          </Card>
+        ) : (
+          <Card title="Pendaftaran kamar ditolak">
+            <p style={{ margin: 0 }}>
+              Pendaftaran kamar <strong>{latestRegistration.room.number}</strong> di{" "}
+              <strong>{latestRegistration.room.property.name}</strong> belum disetujui.
+            </p>
+            {latestRegistration.notes ? (
+              <p className="small muted" style={{ marginBottom: 0 }}>
+                Catatan owner: {latestRegistration.notes}
+              </p>
+            ) : null}
+            <p className="small muted" style={{ marginBottom: 0 }}>
+              Silakan hubungi owner/admin untuk memilih kamar lain.
+            </p>
+          </Card>
+        )
+      ) : null}
+
       <div className="stat-grid">
         <Stat label="Total tunggakan" value={rupiah(outstanding)} hint="Tagihan belum lunas" />
         <Stat label="Tagihan aktif" value={activeInvoices.length} hint="Belum dibayar / tunggakan" />
         <Stat label="Jatuh tempo 7 hari" value={dueSoon.length} hint="Segera lakukan pembayaran" />
         <Stat label="Tiket perbaikan" value={openTickets.length} hint="Sedang diproses" />
       </div>
+
+      <Card
+        title="Meter listrik"
+        actions={
+          <Link className="btn btn-sm btn-primary" href="/meter">
+            {pendingReading ? "Lihat pengajuan" : "Isi meter"}
+          </Link>
+        }
+      >
+        <div className="row between" style={{ flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div className="small muted">Pembacaan terakhir</div>
+            <div style={{ fontWeight: 600, fontSize: 20 }}>
+              {lastReading ? `${lastReading.currentReading} kWh` : "Belum ada"}
+            </div>
+            {lastReading ? (
+              <div className="small muted">
+                {lastReading.room.property.name} · {dateID(lastReading.readingAt)}
+              </div>
+            ) : null}
+          </div>
+          <div>
+            <div className="small muted">Status pengajuan</div>
+            <div style={{ fontWeight: 600 }}>
+              {pendingReading ? "Menunggu verifikasi admin" : "Belum ada"}
+            </div>
+          </div>
+          <div>
+            <div className="small muted">Tarif</div>
+            <div style={{ fontWeight: 600 }}>
+              {lastReading
+                ? `${rupiah(lastReading.room.property.electricityTariff)}/kWh`
+                : "Lihat detail kamar"}
+            </div>
+          </div>
+        </div>
+      </Card>
 
       <Card title="Tagihan terbaru" tight>
         {invoices.length === 0 ? (

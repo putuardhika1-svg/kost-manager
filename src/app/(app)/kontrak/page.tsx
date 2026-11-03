@@ -5,7 +5,13 @@ import { contractScopeWhere, roomScopeWhere, tenantScopeWhere } from "@/lib/scop
 import { dateID, inputDate, rupiah } from "@/lib/format";
 import { Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
 import { currentYearMonth, lastDayOfMonthISO, firstDayOfMonthISO } from "@/lib/dates";
-import { createContractAction, endContractAction, sendContractReminderAction } from "./actions";
+import {
+  approveRegistrationAction,
+  createContractAction,
+  endContractAction,
+  rejectRegistrationAction,
+  sendContractReminderAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +25,7 @@ export default async function ContractPage({
   const params = await searchParams;
   const statusFilter = params.status ?? "active";
 
-  const [contracts, tenants, rooms] = await Promise.all([
+  const [contracts, tenants, rooms, pendingCount] = await Promise.all([
     prisma.contract.findMany({
       where: {
         ...contractScopeWhere(scope),
@@ -40,13 +46,18 @@ export default async function ContractPage({
       where: { ...roomScopeWhere(scope), status: { not: "nonaktif" } },
       include: {
         property: true,
-        contracts: { where: { status: "active" }, select: { id: true } },
+        contracts: { where: { status: { in: ["active", "pending"] } }, select: { id: true } },
       },
       orderBy: [{ property: { name: "asc" } }, { number: "asc" }],
     }),
+    prisma.contract.count({
+      where: { ...contractScopeWhere(scope), status: "pending" },
+    }),
   ]);
 
-  const availableRooms = rooms.filter((room) => room.contracts.length === 0);
+  const availableRooms = rooms.filter(
+    (room) => room.status === "kosong" && room.contracts.length === 0,
+  );
   const ym = currentYearMonth();
 
   return (
@@ -62,6 +73,7 @@ export default async function ContractPage({
         actions={
           <div className="row" style={{ gap: 6 }}>
             {[
+              { key: "pending", label: `Pendaftaran${pendingCount ? ` (${pendingCount})` : ""}` },
               { key: "active", label: "Aktif" },
               { key: "ended", label: "Selesai" },
               { key: "all", label: "Semua" },
@@ -117,9 +129,10 @@ export default async function ContractPage({
                         <div className="small muted">
                           <StatusBadge
                             map={{
+                              pending: { label: "Menunggu persetujuan", tone: "amber" },
                               active: { label: "Aktif", tone: "green" },
                               ended: { label: "Selesai", tone: "gray" },
-                              cancelled: { label: "Dibatalkan", tone: "red" },
+                              cancelled: { label: "Ditolak / dibatalkan", tone: "red" },
                             }}
                             value={contract.status}
                           />
@@ -174,6 +187,102 @@ export default async function ContractPage({
                             </form>
                           </details>
                           </>
+                        ) : contract.status === "pending" ? (
+                          <details>
+                            <summary className="btn btn-sm" style={{ cursor: "pointer" }}>
+                              Review pendaftaran
+                            </summary>
+                            <div style={{ marginTop: 8, minWidth: 280, textAlign: "left" }}>
+                              <form action={approveRegistrationAction}>
+                                <input type="hidden" name="contractId" value={contract.id} />
+                                <div className="form-grid" style={{ gridTemplateColumns: "1fr", gap: 8 }}>
+                                  <div className="field">
+                                    <label className="small">Harga sewa per bulan</label>
+                                    <input
+                                      name="rentAmount"
+                                      type="number"
+                                      min={1}
+                                      required
+                                      defaultValue={contract.rentAmount}
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label className="small">Deposit</label>
+                                    <input
+                                      name="deposit"
+                                      type="number"
+                                      min={0}
+                                      defaultValue={contract.deposit}
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label className="small">Tanggal mulai</label>
+                                    <input
+                                      name="startDate"
+                                      type="date"
+                                      required
+                                      defaultValue={inputDate(contract.startDate)}
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label className="small">Tanggal berakhir</label>
+                                    <input
+                                      name="endDate"
+                                      type="date"
+                                      required
+                                      defaultValue={inputDate(contract.endDate)}
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label className="small">Tanggal tagih (1–28)</label>
+                                    <input
+                                      name="billingDay"
+                                      type="number"
+                                      min={1}
+                                      max={28}
+                                      defaultValue={contract.billingDay}
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label className="small">Angka awal meter (kWh)</label>
+                                    <input
+                                      name="electricityStartReading"
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      defaultValue={contract.electricityStartReading ?? 0}
+                                    />
+                                  </div>
+                                  <div className="field">
+                                    <label className="small">Catatan</label>
+                                    <input name="notes" defaultValue={contract.notes ?? ""} />
+                                  </div>
+                                </div>
+                                <button className="btn btn-sm btn-primary" type="submit" style={{ marginTop: 8 }}>
+                                  Setujui &amp; aktifkan
+                                </button>
+                              </form>
+
+                              <div className="divider" />
+
+                              <form action={rejectRegistrationAction}>
+                                <input type="hidden" name="contractId" value={contract.id} />
+                                <div className="field" style={{ marginBottom: 8 }}>
+                                  <label className="small">Alasan penolakan</label>
+                                  <input
+                                    name="reason"
+                                    required
+                                    minLength={5}
+                                    maxLength={300}
+                                    placeholder="Contoh: kamar sedang diperbaiki"
+                                  />
+                                </div>
+                                <button className="btn btn-sm btn-danger" type="submit">
+                                  Tolak pendaftaran
+                                </button>
+                              </form>
+                            </div>
+                          </details>
                         ) : (
                           <span className="muted small">-</span>
                         )}
@@ -191,7 +300,7 @@ export default async function ContractPage({
         {availableRooms.length === 0 ? (
           <Empty
             title="Tidak ada kamar tersedia"
-            description="Semua kamar sudah memiliki kontrak aktif atau berstatus nonaktif."
+            description="Semua kamar sudah memiliki kontrak aktif, sedang didaftarkan, atau berstatus nonaktif."
           />
         ) : (
           <form action={createContractAction}>
@@ -240,6 +349,9 @@ export default async function ContractPage({
               </Field>
               <Field label="Tanggal tagih" hint="1–28 setiap bulan">
                 <input name="billingDay" type="number" min={1} max={28} defaultValue={1} />
+              </Field>
+              <Field label="Angka awal meter listrik (kWh)" hint="Catat dari meter analog saat check-in">
+                <input name="electricityStartReading" type="number" min={0} step={1} defaultValue={0} />
               </Field>
               <Field label="Catatan">
                 <input name="notes" placeholder="Opsional" />
