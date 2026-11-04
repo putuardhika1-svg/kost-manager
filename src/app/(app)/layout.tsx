@@ -1,6 +1,7 @@
-import { requireUser } from "@/lib/auth";
+import { getSession, requireUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/constants";
 import { NavLink } from "@/components/nav-link";
+import { SessionStatus } from "@/components/session-status";
 import { logoutAction } from "./actions";
 
 type NavItem = { href: string; label: string; roles: string[] };
@@ -21,21 +22,17 @@ const NAV: NavItem[] = [
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  const session = await getSession();
   const items = NAV.filter((item) => item.roles.includes(user.role));
   const roleLabel = ROLE_LABELS[user.role] ?? user.role;
+  const expiresAt = session?.exp ? session.exp * 1000 : null;
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">KM</div>
-          <div>
-            <div className="brand-name">KostManager</div>
-            <div className="brand-sub">Manajemen Kost</div>
-          </div>
+        <div className="nav-section" style={{ paddingTop: 4 }}>
+          Menu
         </div>
-
-        <div className="nav-section">Menu</div>
         <nav className="nav">
           {items.map((item) => (
             <NavLink key={item.href} href={item.href} label={item.label} />
@@ -43,25 +40,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="sidebar-footer">
-          <div style={{ color: "#f6ead8", fontWeight: 600 }}>{user.name}</div>
-          <div>{roleLabel}</div>
+          <div className="sidebar-user">
+            <div className="sidebar-user-name">{user.name}</div>
+            <div className="sidebar-user-role">{roleLabel}</div>
+          </div>
+          <SessionStatus expiresAt={expiresAt} />
+          <form action={logoutAction}>
+            <button className="btn btn-sm" type="submit">
+              Keluar
+            </button>
+          </form>
         </div>
       </aside>
 
       <div className="main">
-        <header className="topbar">
-          <div className="muted small">
-            {roleLabel} · {user.email}
-          </div>
-          <div className="row">
-            <span className="pill">{user.name}</span>
-            <form action={logoutAction}>
-              <button className="btn btn-sm" type="submit">
-                Keluar
-              </button>
-            </form>
-          </div>
-        </header>
         <main className="content">{children}</main>
       </div>
     </div>

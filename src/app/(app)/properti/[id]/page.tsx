@@ -5,9 +5,13 @@ import { prisma } from "@/lib/db";
 import { rupiah } from "@/lib/format";
 import { Badge, Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
 import { ROOM_STATUS } from "@/lib/constants";
+import { ConfirmForm } from "@/components/confirm-form";
 import {
   createPaymentChannelAction,
+  deletePaymentChannelAction,
+  deletePropertyAction,
   togglePaymentChannelAction,
+  updatePaymentChannelAction,
   updatePropertyAction,
   updatePropertyBillingAction,
 } from "../actions";
@@ -227,13 +231,88 @@ export default async function PropertyDetailPage({
                       </Badge>
                     </td>
                     <td className="right">
-                      <form action={togglePaymentChannelAction}>
+                      <details>
+                        <summary className="btn btn-sm" style={{ cursor: "pointer" }}>
+                          Ubah
+                        </summary>
+                        <form
+                          action={updatePaymentChannelAction}
+                          style={{ marginTop: 8, minWidth: 260, textAlign: "left" }}
+                        >
+                          <input type="hidden" name="channelId" value={channel.id} />
+                          <input type="hidden" name="propertyId" value={property.id} />
+                          <div className="field" style={{ marginBottom: 6 }}>
+                            <label className="small">Tipe</label>
+                            <select name="type" defaultValue={channel.type}>
+                              <option value="bank">Transfer bank</option>
+                              <option value="qris">QRIS</option>
+                              <option value="cash">Tunai</option>
+                            </select>
+                          </div>
+                          <div className="field" style={{ marginBottom: 6 }}>
+                            <label className="small">Label</label>
+                            <input name="label" defaultValue={channel.label} required maxLength={80} />
+                          </div>
+                          <div className="field" style={{ marginBottom: 6 }}>
+                            <label className="small">Nama bank</label>
+                            <input name="bankName" defaultValue={channel.bankName ?? ""} maxLength={80} />
+                          </div>
+                          <div className="field" style={{ marginBottom: 6 }}>
+                            <label className="small">Nomor rekening</label>
+                            <input
+                              name="accountNumber"
+                              defaultValue={channel.accountNumber ?? ""}
+                              maxLength={60}
+                            />
+                          </div>
+                          <div className="field" style={{ marginBottom: 6 }}>
+                            <label className="small">Atas nama</label>
+                            <input
+                              name="accountHolder"
+                              defaultValue={channel.accountHolder ?? ""}
+                              maxLength={100}
+                            />
+                          </div>
+                          <div className="field" style={{ marginBottom: 6 }}>
+                            <label className="small">Gambar QRIS (opsional)</label>
+                            <input
+                              name="qris"
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                            />
+                          </div>
+                          <div className="field" style={{ marginBottom: 8 }}>
+                            <label className="small">Instruksi</label>
+                            <input
+                              name="instructions"
+                              defaultValue={channel.instructions ?? ""}
+                              maxLength={500}
+                            />
+                          </div>
+                          <button className="btn btn-sm btn-primary" type="submit">
+                            Simpan metode
+                          </button>
+                        </form>
+                      </details>
+                      <form action={togglePaymentChannelAction} className="inline" style={{ marginLeft: 6 }}>
                         <input type="hidden" name="channelId" value={channel.id} />
                         <input type="hidden" name="propertyId" value={property.id} />
                         <button className="btn btn-sm" type="submit">
                           {channel.isActive ? "Nonaktifkan" : "Aktifkan"}
                         </button>
                       </form>
+                      <ConfirmForm
+                        action={deletePaymentChannelAction}
+                        confirmMessage={`Hapus metode pembayaran ${channel.label}?`}
+                        className="inline"
+                        style={{ marginLeft: 6 }}
+                      >
+                        <input type="hidden" name="channelId" value={channel.id} />
+                        <input type="hidden" name="propertyId" value={property.id} />
+                        <button className="btn btn-sm btn-danger" type="submit">
+                          Hapus
+                        </button>
+                      </ConfirmForm>
                     </td>
                   </tr>
                 ))}
@@ -314,6 +393,21 @@ export default async function PropertyDetailPage({
             </table>
           </div>
         )}
+      </Card>
+
+      <Card
+        title="Hapus properti"
+        description="Hapus permanen properti beserta kamar dan metode pembayarannya. Kontrak atau tiket perbaikan yang masih terkait harus diselesaikan terlebih dahulu."
+      >
+        <ConfirmForm
+          action={deletePropertyAction}
+          confirmMessage={`Hapus properti ${property.name}? Tindakan ini tidak dapat dibatalkan.`}
+        >
+          <input type="hidden" name="id" value={property.id} />
+          <button className="btn btn-danger" type="submit">
+            Hapus properti
+          </button>
+        </ConfirmForm>
       </Card>
     </>
   );

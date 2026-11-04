@@ -14,13 +14,17 @@ import {
 import { Badge, Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
 import { RequirementList } from "@/components/requirements";
 import { getInvoiceRequirements } from "@/lib/requirements";
+import { ConfirmForm } from "@/components/confirm-form";
 import {
   addItemAction,
+  deleteInvoiceAction,
   publishInvoiceAction,
   recordPaymentAction,
   removeItemAction,
   sendReminderAction,
   tenantUploadProofAction,
+  updateInvoiceDueDateAction,
+  updateItemAction,
   voidInvoiceAction,
 } from "../actions";
 
@@ -189,6 +193,27 @@ export default async function InvoiceDetailPage({
         </Card>
       ) : null}
 
+      {canEdit ? (
+        <Card
+          title="Pengaturan tagihan"
+          description="Ubah tanggal jatuh tempo. Status tagihan dihitung ulang otomatis."
+        >
+          <form action={updateInvoiceDueDateAction}>
+            <input type="hidden" name="invoiceId" value={invoice.id} />
+            <div className="form-grid">
+              <Field label="Jatuh tempo">
+                <input name="dueDate" type="date" required defaultValue={inputDate(invoice.dueDate)} />
+              </Field>
+            </div>
+            <div className="form-actions">
+              <button className="btn btn-primary" type="submit">
+                Simpan jatuh tempo
+              </button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
+
       <div className="grid-2">
         <Card title="Informasi tagihan">
           <dl className="kv">
@@ -321,13 +346,62 @@ export default async function InvoiceDetailPage({
                   <td className="num">{rupiah(item.amount)}</td>
                   <td className="right">
                     {canEdit && item.type !== "rent" ? (
-                      <form action={removeItemAction}>
-                        <input type="hidden" name="itemId" value={item.id} />
-                        <input type="hidden" name="invoiceId" value={invoice.id} />
-                        <button className="btn btn-sm btn-danger" type="submit">
-                          Hapus
-                        </button>
-                      </form>
+                      <>
+                        {!item.meterReadingId ? (
+                          <details style={{ marginBottom: 6 }}>
+                            <summary className="btn btn-sm" style={{ cursor: "pointer" }}>
+                              Edit
+                            </summary>
+                            <form
+                              action={updateItemAction}
+                              style={{ marginTop: 8, minWidth: 240, textAlign: "left" }}
+                            >
+                              <input type="hidden" name="itemId" value={item.id} />
+                              <input type="hidden" name="invoiceId" value={invoice.id} />
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Deskripsi</label>
+                                <input
+                                  name="description"
+                                  defaultValue={item.description}
+                                  required
+                                  minLength={2}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Jenis</label>
+                                <select name="type" defaultValue={item.type}>
+                                  <option value="utility">Utilitas</option>
+                                  <option value="penalty">Denda</option>
+                                  <option value="other">Lainnya</option>
+                                </select>
+                              </div>
+                              <div className="field" style={{ marginBottom: 8 }}>
+                                <label className="small">Nominal (Rp)</label>
+                                <input
+                                  name="amount"
+                                  type="number"
+                                  min={1}
+                                  required
+                                  defaultValue={item.amount}
+                                />
+                              </div>
+                              <button className="btn btn-sm btn-primary" type="submit">
+                                Simpan item
+                              </button>
+                            </form>
+                          </details>
+                        ) : null}
+                        <ConfirmForm
+                          action={removeItemAction}
+                          confirmMessage={`Hapus item "${item.description}" dari tagihan?`}
+                        >
+                          <input type="hidden" name="itemId" value={item.id} />
+                          <input type="hidden" name="invoiceId" value={invoice.id} />
+                          <button className="btn btn-sm btn-danger" type="submit">
+                            Hapus
+                          </button>
+                        </ConfirmForm>
+                      </>
                     ) : (
                       <span className="small muted">-</span>
                     )}
@@ -544,6 +618,23 @@ export default async function InvoiceDetailPage({
               </button>
             </div>
           </form>
+        </Card>
+      ) : null}
+
+      {canManage && (invoice.status === "draft" || invoice.status === "void") ? (
+        <Card
+          title="Hapus tagihan"
+          description="Hapus permanen tagihan draft/dibatalkan beserta rinciannya. Tagihan yang memiliki pembayaran tidak dapat dihapus."
+        >
+          <ConfirmForm
+            action={deleteInvoiceAction}
+            confirmMessage={`Hapus tagihan ${invoice.invoiceNo}? Tindakan ini tidak dapat dibatalkan.`}
+          >
+            <input type="hidden" name="invoiceId" value={invoice.id} />
+            <button className="btn btn-danger" type="submit">
+              Hapus tagihan
+            </button>
+          </ConfirmForm>
         </Card>
       ) : null}
 

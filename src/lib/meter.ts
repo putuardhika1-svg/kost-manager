@@ -187,6 +187,93 @@ export async function verifyMeterReading(
   return { usageKwh, amount };
 }
 
+export async function updateMeterReading(input: {
+  readingId: string;
+  currentReading: number;
+  readingAt: Date;
+  notes?: string | null;
+}): Promise<{ usageKwh: number; amount: number }> {
+  const reading = await prisma.meterReading.findUnique({
+    where: { id: input.readingId },
+    include: {
+      room: { include: { property: true } },
+      contract: { select: { electricityStartReading: true } },
+    },
+  });
+  if (!reading) throw new Error("Pembacaan meter tidak ditemukan");
+  if (reading.status !== "pending") {
+    throw new Error("Hanya pembacaan berstatus pending yang dapat diedit");
+  }
+  if (!Number.isFinite(input.currentReading) || input.currentReading < 0) {
+    throw new Error("Angka meter tidak valid");
+  }
+
+  const { periodStart, periodEnd } = meterPeriod(input.readingAt);
+  const duplicate = await prisma.meterReading.findFirst({
+    where: {
+      roomId: reading.roomId,
+      periodStart,
+      status: { in: ["pending", "verified", "billed"] },
+      id: { not: reading.id },
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    throw new Error("Sudah ada pembacaan meter untuk kamar dan periode ini");
+  }
+
+  const last = await findLastVerifiedReading(reading.roomId, input.readingAt, reading.id);
+  const hasStartReading = reading.contract?.electricityStartReading != null;
+  const effectiveBaseline = reading.isBaseline || (!last && !hasStartReading);
+  const previous = effectiveBaseline
+    ? input.currentReading
+    : last?.currentReading ?? reading.contract?.electricityStartReading ?? 0;
+
+  if (!effectiveBaseline && input.currentReading < previous) {
+    throw new Error(
+      `Angka meter tidak boleh lebih kecil dari pembacaan terakhir (${previous} kWh).`,
+    );
+  }
+
+  const usageKwh = effectiveBaseline ? 0 : roundKwh(input.currentReading - previous);
+  const amount = effectiveBaseline ? 0 : meterAmount(usageKwh, reading.tariffPerKwh);
+
+  await prisma.meterReading.update({
+    where: { id: reading.id },
+    data: {
+      periodStart,
+      periodEnd,
+      readingAt: input.readingAt,
+      previousReading: previous,
+      currentReading: input.currentReading,
+      usageKwh,
+      amount,
+      isBaseline: effectiveBaseline,
+      notes: input.notes || null,
+    },
+  });
+
+  return { usageKwh, amount };
+}
+
+export async function deleteMeterReading(readingId: string): Promise<void> {
+  const reading = await prisma.meterReading.findUnique({
+    where: { id: readingId },
+    include: { invoiceItem: { select: { id: true } } },
+  });
+  if (!reading) throw new Error("Pembacaan meter tidak ditemukan");
+  if (reading.status === "verified" || reading.status === "billed") {
+    throw new Error(
+      "Pembacaan terverifikasi tidak dapat dihapus. Hapus item listrik dari tagihan terlebih dahulu.",
+    );
+  }
+  if (reading.invoiceItem) {
+    throw new Error("Pembacaan sudah terhubung ke tagihan dan tidak dapat dihapus");
+  }
+
+  await prisma.meterReading.delete({ where: { id: readingId } });
+}
+
 export async function rejectMeterReading(
   readingId: string,
   reason: string,

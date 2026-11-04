@@ -374,3 +374,167 @@ export async function rejectRegistrationAction(formData: FormData): Promise<void
   redirect(`/kontrak?status=pending&ok=${encodeURIComponent("Pendaftaran ditolak")}`);
 }
 
+export async function updateContractAction(formData: FormData): Promise<void> {
+  const user = await requireRole(["owner", "admin"]);
+  const scope = await propertyScope(user);
+  const contractId = String(formData.get("contractId") ?? "");
+  if (!contractId) redirect("/kontrak?err=ID+kontrak+tidak+valid");
+
+  const contract = await prisma.contract.findUnique({
+    where: { id: contractId },
+    include: { room: true, tenant: true },
+  });
+  if (!contract) redirect("/kontrak?err=Kontrak+tidak+ditemukan");
+  if (scope !== null && !scope.includes(contract.room.propertyId)) {
+    redirect("/kontrak?err=Akses+ditolak");
+  }
+  if (contract.status === "ended" || contract.status === "cancelled") {
+    redirect("/kontrak?err=Kontrak+yang+sudah+selesai+tidak+dapat+diubah");
+  }
+
+  const parsed = contractSchema.safeParse({
+    tenantId: contract.tenantId,
+    roomId: contract.roomId,
+    startDate: String(formData.get("startDate") ?? ""),
+    endDate: String(formData.get("endDate") ?? ""),
+    rentAmount: formData.get("rentAmount") ?? 0,
+    deposit: formData.get("deposit") ?? 0,
+    billingDay: formData.get("billingDay") ?? 1,
+    electricityStartReading: formData.get("electricityStartReading") ?? 0,
+    notes: String(formData.get("notes") ?? "").trim(),
+  });
+  if (!parsed.success) {
+    redirect(`/kontrak?err=${encodeURIComponent(firstError(parsed.error))}`);
+  }
+
+  const data = parsed.data;
+  const startDate = parseDateInput(data.startDate);
+  const endDate = parseDateInput(data.endDate);
+  if (!startDate || !endDate) {
+    redirect(`/kontrak?err=${encodeURIComponent("Format tanggal tidak valid")}`);
+  }
+
+  const conflict = await prisma.contract.findFirst({
+    where: {
+      id: { not: contractId },
+      roomId: contract.roomId,
+      status: { in: ["active", "pending"] },
+      startDate: { lte: endDate },
+      endDate: { gte: startDate },
+    },
+    select: { id: true },
+  });
+  if (conflict) {
+    redirect(
+      `/kontrak?err=${encodeURIComponent("Kamar masih memiliki kontrak aktif pada periode tersebut")}`,
+    );
+  }
+
+  let error: string | null = null;
+  try {
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        startDate,
+        endDate,
+        rentAmount: data.rentAmount,
+        deposit: data.deposit,
+        billingDay: data.billingDay,
+        electricityStartReading: data.electricityStartReading ?? 0,
+        notes: data.notes || null,
+      },
+    });
+    await logAudit({
+      userId: user.id,
+      action: "contract.update",
+      entity: "Contract",
+      entityId: contractId,
+      payload: {
+        startDate: data.startDate,
+        endDate: data.endDate,
+        rentAmount: data.rentAmount,
+        deposit: data.deposit,
+        billingDay: data.billingDay,
+      },
+    });
+  } catch {
+    error = "Gagal memperbarui kontrak.";
+  }
+
+  if (error) redirect(`/kontrak?err=${encodeURIComponent(error)}`);
+  revalidatePath("/kontrak");
+  revalidatePath("/kamar");
+  revalidatePath("/penyewa");
+  redirect(
+    `/kontrak?status=${contract.status}&ok=${encodeURIComponent("Kontrak diperbarui")}`,
+  );
+}
+
+export async function deleteContractAction(formData: FormData): Promise<void> {
+  const user = await requireRole(["owner", "admin"]);
+  const scope = await propertyScope(user);
+  const contractId = String(formData.get("contractId") ?? "");
+  if (!contractId) redirect("/kontrak?err=ID+kontrak+tidak+valid");
+
+  const contract = await prisma.contract.findUnique({
+    where: { id: contractId },
+    include: {
+      room: true,
+      tenant: true,
+      _count: { select: { invoices: true, meterReadings: true } },
+    },
+  });
+  if (!contract) redirect("/kontrak?err=Kontrak+tidak+ditemukan");
+  if (scope !== null && !scope.includes(contract.room.propertyId)) {
+    redirect("/kontrak?err=Akses+ditolak");
+  }
+  if (contract._count.invoices > 0) {
+    redirect(
+      "/kontrak?err=" +
+        encodeURIComponent(
+          "Kontrak memiliki tagihan. Batalkan/hapus tagihan terkait terlebih dahulu.",
+        ),
+    );
+  }
+
+  let error: string | null = null;
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.meterReading.updateMany({
+        where: { contractId },
+        data: { contractId: null },
+      });
+      await tx.contract.delete({ where: { id: contractId } });
+
+      const otherActive = await tx.contract.count({
+        where: {
+          roomId: contract.roomId,
+          status: "active",
+          id: { not: contractId },
+        },
+      });
+      if (otherActive === 0 && contract.room.status === "terisi") {
+        await tx.room.update({ where: { id: contract.roomId }, data: { status: "kosong" } });
+      }
+      if (contract.room.status === "booked") {
+        await tx.room.update({ where: { id: contract.roomId }, data: { status: "kosong" } });
+      }
+    });
+    await logAudit({
+      userId: user.id,
+      action: "contract.delete",
+      entity: "Contract",
+      entityId: contractId,
+      payload: { roomId: contract.roomId, tenantId: contract.tenantId },
+    });
+  } catch {
+    error = "Gagal menghapus kontrak. Pastikan tidak ada data terkait.";
+  }
+
+  if (error) redirect(`/kontrak?err=${encodeURIComponent(error)}`);
+  revalidatePath("/kontrak");
+  revalidatePath("/kamar");
+  revalidatePath("/penyewa");
+  redirect(`/kontrak?ok=Kontrak+${encodeURIComponent(contract.tenant.name)}+dihapus`);
+}
+

@@ -5,7 +5,12 @@ import { maintenanceScopeWhere, roomScopeWhere, tenantScopeWhere } from "@/lib/s
 import { dateID, rupiah } from "@/lib/format";
 import { MAINT_CATEGORIES, MAINT_STATUS, PRIORITIES } from "@/lib/constants";
 import { Card, Empty, Field, Flash, PageHeader, Stat, StatusBadge } from "@/components/ui";
-import { createMaintenanceAction, updateMaintenanceAction } from "./actions";
+import { ConfirmForm } from "@/components/confirm-form";
+import {
+  createMaintenanceAction,
+  deleteMaintenanceAction,
+  updateMaintenanceAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -197,6 +202,37 @@ export default async function MaintenancePage({
                           >
                             <input type="hidden" name="ticketId" value={ticket.id} />
                             <div className="field" style={{ marginBottom: 6 }}>
+                              <label className="small">Judul</label>
+                              <input
+                                name="title"
+                                defaultValue={ticket.title}
+                                required
+                                minLength={3}
+                                maxLength={120}
+                              />
+                            </div>
+                            <div className="field" style={{ marginBottom: 6 }}>
+                              <label className="small">Deskripsi</label>
+                              <textarea
+                                name="description"
+                                defaultValue={ticket.description}
+                                required
+                                minLength={5}
+                                maxLength={1000}
+                                style={{ minHeight: 60 }}
+                              />
+                            </div>
+                            <div className="field" style={{ marginBottom: 6 }}>
+                              <label className="small">Kategori</label>
+                              <select name="category" defaultValue={ticket.category}>
+                                {MAINT_CATEGORIES.map((category) => (
+                                  <option key={category} value={category}>
+                                    {CATEGORY_LABELS[category] ?? category}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="field" style={{ marginBottom: 6 }}>
                               <label className="small">Status</label>
                               <select name="status" defaultValue={ticket.status}>
                                 {Object.entries(MAINT_STATUS).map(([key, meta]) => (
@@ -228,6 +264,18 @@ export default async function MaintenancePage({
                               Simpan
                             </button>
                           </form>
+                          {user.role === "owner" || user.role === "admin" ? (
+                            <ConfirmForm
+                              action={deleteMaintenanceAction}
+                              confirmMessage={`Hapus tiket "${ticket.title}"? Tindakan ini tidak dapat dibatalkan.`}
+                              style={{ marginTop: 8 }}
+                            >
+                              <input type="hidden" name="ticketId" value={ticket.id} />
+                              <button className="btn btn-sm btn-danger" type="submit">
+                                Hapus tiket
+                              </button>
+                            </ConfirmForm>
+                          ) : null}
                         </details>
                       </td>
                     ) : null}

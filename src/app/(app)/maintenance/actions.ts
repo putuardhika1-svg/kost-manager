@@ -109,6 +109,9 @@ export async function updateMaintenanceAction(formData: FormData): Promise<void>
   const ticketId = String(formData.get("ticketId") ?? "");
 
   const parsed = maintenanceUpdateSchema.safeParse({
+    title: String(formData.get("title") ?? "").trim(),
+    description: String(formData.get("description") ?? "").trim(),
+    category: String(formData.get("category") ?? "umum"),
     status: String(formData.get("status") ?? "baru"),
     priority: String(formData.get("priority") ?? "sedang"),
     assignedTo: String(formData.get("assignedTo") ?? "").trim(),
@@ -133,6 +136,9 @@ export async function updateMaintenanceAction(formData: FormData): Promise<void>
   await prisma.maintenance.update({
     where: { id: ticketId },
     data: {
+      title: data.title,
+      description: data.description,
+      category: data.category,
       status: data.status,
       priority: data.priority,
       assignedTo: data.assignedTo || null,
@@ -146,10 +152,52 @@ export async function updateMaintenanceAction(formData: FormData): Promise<void>
     action: "maintenance.update",
     entity: "Maintenance",
     entityId: ticketId,
-    payload: { from: ticket.status, to: data.status, priority: data.priority, cost: data.cost },
+    payload: {
+      from: ticket.status,
+      to: data.status,
+      priority: data.priority,
+      cost: data.cost,
+      title: data.title,
+      category: data.category,
+    },
   });
 
   revalidatePath("/maintenance");
   revalidatePath("/dashboard");
   redirect("/maintenance?ok=Tiket+diperbarui");
+}
+
+export async function deleteMaintenanceAction(formData: FormData): Promise<void> {
+  const user = await requireRole(["owner", "admin"]);
+  const scope = await propertyScope(user);
+  const ticketId = String(formData.get("ticketId") ?? "");
+  if (!ticketId) redirect("/maintenance?err=ID+tiket+tidak+valid");
+
+  const ticket = await prisma.maintenance.findUnique({
+    where: { id: ticketId },
+    include: { room: true },
+  });
+  if (!ticket) redirect("/maintenance?err=Tiket+tidak+ditemukan");
+  if (scope !== null && !scope.includes(ticket.room.propertyId)) {
+    redirect("/maintenance?err=Akses+ditolak");
+  }
+
+  let error: string | null = null;
+  try {
+    await prisma.maintenance.delete({ where: { id: ticketId } });
+    await logAudit({
+      userId: user.id,
+      action: "maintenance.delete",
+      entity: "Maintenance",
+      entityId: ticketId,
+      payload: { title: ticket.title, roomId: ticket.roomId, status: ticket.status },
+    });
+  } catch {
+    error = "Gagal menghapus tiket perbaikan.";
+  }
+
+  if (error) redirect(`/maintenance?err=${encodeURIComponent(error)}`);
+  revalidatePath("/maintenance");
+  revalidatePath("/dashboard");
+  redirect("/maintenance?ok=Tiket+perbaikan+dihapus");
 }

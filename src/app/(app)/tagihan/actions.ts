@@ -4,18 +4,26 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { propertyScope, requireRole } from "@/lib/auth";
-import { firstError, generateSchema, invoiceItemSchema, paymentSchema } from "@/lib/validation";
+import {
+  firstError,
+  generateSchema,
+  invoiceDueDateSchema,
+  invoiceItemSchema,
+  paymentSchema,
+} from "@/lib/validation";
 import { parseDateInput } from "@/lib/dates";
 import {
   addInvoiceItem,
   generateInvoices,
   publishInvoice,
+  recomputeInvoice,
   recordPayment,
   removeInvoiceItem,
   sendReminder,
   voidInvoice,
 } from "@/lib/billing";
 import { saveUpload } from "@/lib/upload";
+import { logAudit } from "@/lib/audit";
 
 async function invoicePropertyId(invoiceId: string): Promise<string | null> {
   const invoice = await prisma.invoice.findUnique({
@@ -161,6 +169,151 @@ export async function removeItemAction(formData: FormData): Promise<void> {
   if (error) redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent(error)}`);
   revalidatePath(`/tagihan/${invoiceId}`);
   redirect(`/tagihan/${invoiceId}?ok=Item+dihapus`);
+}
+
+export async function updateItemAction(formData: FormData): Promise<void> {
+  const itemId = String(formData.get("itemId") ?? "");
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  await guardManageInvoice(invoiceId);
+
+  const parsed = invoiceItemSchema.safeParse({
+    description: String(formData.get("description") ?? "").trim(),
+    type: String(formData.get("type") ?? "other"),
+    amount: formData.get("amount") ?? 0,
+  });
+  if (!parsed.success) {
+    redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent(firstError(parsed.error))}`);
+  }
+
+  let error: string | null = null;
+  try {
+    const user = await requireRole(["owner", "admin"]);
+    const item = await prisma.invoiceItem.findUnique({ where: { id: itemId } });
+    if (!item || item.invoiceId !== invoiceId) throw new Error("Item tidak ditemukan");
+    if (item.type === "rent") throw new Error("Item sewa tidak dapat diubah");
+    if (item.meterReadingId) {
+      throw new Error("Item listrik terhubung ke pembacaan meter; ubah melalui menu Meter.");
+    }
+
+    const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+    if (!invoice) throw new Error("Tagihan tidak ditemukan");
+    if (invoice.status === "paid" || invoice.status === "void") {
+      throw new Error("Item tidak dapat diubah pada tagihan lunas/dibatalkan");
+    }
+
+    await prisma.invoiceItem.update({
+      where: { id: itemId },
+      data: {
+        description: parsed.data.description,
+        type: parsed.data.type,
+        amount: parsed.data.amount,
+      },
+    });
+    await recomputeInvoice(invoiceId);
+    await logAudit({
+      userId: user.id,
+      action: "invoice.item.update",
+      entity: "Invoice",
+      entityId: invoiceId,
+      payload: { itemId, ...parsed.data },
+    });
+  } catch (err) {
+    error = err instanceof Error ? err.message : "Gagal memperbarui item";
+  }
+
+  if (error) redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent(error)}`);
+  revalidatePath(`/tagihan/${invoiceId}`);
+  redirect(`/tagihan/${invoiceId}?ok=Item+diperbarui`);
+}
+
+export async function updateInvoiceDueDateAction(formData: FormData): Promise<void> {
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  await guardManageInvoice(invoiceId);
+
+  const parsed = invoiceDueDateSchema.safeParse({
+    dueDate: String(formData.get("dueDate") ?? ""),
+  });
+  if (!parsed.success) {
+    redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent(firstError(parsed.error))}`);
+  }
+  const dueDate = parseDateInput(parsed.data.dueDate);
+  if (!dueDate) {
+    redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent("Format tanggal tidak valid")}`);
+  }
+
+  let error: string | null = null;
+  try {
+    const user = await requireRole(["owner", "admin"]);
+    const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+    if (!invoice) throw new Error("Tagihan tidak ditemukan");
+    if (invoice.status === "paid" || invoice.status === "void") {
+      throw new Error("Jatuh tempo tagihan lunas/dibatalkan tidak dapat diubah");
+    }
+
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { dueDate } });
+    await recomputeInvoice(invoiceId);
+    await logAudit({
+      userId: user.id,
+      action: "invoice.due-date",
+      entity: "Invoice",
+      entityId: invoiceId,
+      payload: { from: invoice.dueDate.toISOString(), to: dueDate.toISOString() },
+    });
+  } catch (err) {
+    error = err instanceof Error ? err.message : "Gagal memperbarui jatuh tempo";
+  }
+
+  if (error) redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent(error)}`);
+  revalidatePath(`/tagihan/${invoiceId}`);
+  revalidatePath("/tagihan");
+  redirect(`/tagihan/${invoiceId}?ok=Jatuh+tempo+diperbarui`);
+}
+
+export async function deleteInvoiceAction(formData: FormData): Promise<void> {
+  const invoiceId = String(formData.get("invoiceId") ?? "");
+  await guardManageInvoice(invoiceId);
+
+  let error: string | null = null;
+  try {
+    const user = await requireRole(["owner", "admin"]);
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        _count: { select: { payments: true } },
+      },
+    });
+    if (!invoice) throw new Error("Tagihan tidak ditemukan");
+    if (!["draft", "void"].includes(invoice.status)) {
+      throw new Error("Hanya tagihan draft/dibatalkan yang dapat dihapus.");
+    }
+    if (invoice._count.payments > 0) {
+      throw new Error("Tagihan memiliki pembayaran; batalkan tagihan tanpa menghapus riwayat.");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.meterReading.updateMany({
+        where: { invoiceId },
+        data: { invoiceId: null, status: "verified", billedAt: null },
+      });
+      await tx.notificationLog.deleteMany({ where: { invoiceId } });
+      await tx.invoice.delete({ where: { id: invoiceId } });
+    });
+
+    await logAudit({
+      userId: user.id,
+      action: "invoice.delete",
+      entity: "Invoice",
+      entityId: invoiceId,
+      payload: { invoiceNo: invoice.invoiceNo, status: invoice.status },
+    });
+  } catch (err) {
+    error = err instanceof Error ? err.message : "Gagal menghapus tagihan";
+  }
+
+  if (error) redirect(`/tagihan/${invoiceId}?err=${encodeURIComponent(error)}`);
+  revalidatePath("/tagihan");
+  revalidatePath("/dashboard");
+  redirect("/tagihan?ok=Tagihan+dihapus");
 }
 
 export async function recordPaymentAction(formData: FormData): Promise<void> {

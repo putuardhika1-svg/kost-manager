@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { propertyScope, requireRole } from "@/lib/auth";
-import { tenantSchema, firstError } from "@/lib/validation";
+import { tenantSchema, tenantStatusSchema, firstError } from "@/lib/validation";
 import { logAudit } from "@/lib/audit";
 
 export async function createTenantAction(formData: FormData): Promise<void> {
@@ -137,4 +137,94 @@ export async function updateTenantAction(formData: FormData): Promise<void> {
   if (error) redirect(`/penyewa/${id}?err=${encodeURIComponent(error)}`);
   revalidatePath(`/penyewa/${id}`);
   redirect(`/penyewa/${id}?ok=Perubahan+disimpan`);
+}
+
+export async function setTenantStatusAction(formData: FormData): Promise<void> {
+  const user = await requireRole(["owner", "admin"]);
+  const scope = await propertyScope(user);
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/penyewa?err=ID+penyewa+tidak+valid");
+
+  const parsed = tenantStatusSchema.safeParse({
+    status: String(formData.get("status") ?? "aktif"),
+  });
+  if (!parsed.success) {
+    redirect(`/penyewa/${id}?err=${encodeURIComponent(firstError(parsed.error))}`);
+  }
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id },
+    include: { contracts: { select: { room: { select: { propertyId: true } } } } },
+  });
+  if (!tenant) redirect("/penyewa?err=Penyewa+tidak+ditemukan");
+  if (scope !== null) {
+    const allowed =
+      tenant.contracts.length === 0 ||
+      tenant.contracts.some((contract) => scope.includes(contract.room.propertyId));
+    if (!allowed) redirect("/penyewa?err=Akses+ditolak");
+  }
+
+  await prisma.tenant.update({ where: { id }, data: { status: parsed.data.status } });
+  await logAudit({
+    userId: user.id,
+    action: "tenant.status",
+    entity: "Tenant",
+    entityId: id,
+    payload: { from: tenant.status, to: parsed.data.status },
+  });
+
+  revalidatePath(`/penyewa/${id}`);
+  revalidatePath("/penyewa");
+  redirect(`/penyewa/${id}?ok=Status+penyewa+diperbarui`);
+}
+
+export async function deleteTenantAction(formData: FormData): Promise<void> {
+  const user = await requireRole(["owner", "admin"]);
+  const scope = await propertyScope(user);
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/penyewa?err=ID+penyewa+tidak+valid");
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id },
+    include: {
+      contracts: { select: { id: true, room: { select: { propertyId: true } } } },
+    },
+  });
+  if (!tenant) redirect("/penyewa?err=Penyewa+tidak+ditemukan");
+  if (scope !== null) {
+    const allowed =
+      tenant.contracts.length === 0 ||
+      tenant.contracts.some((contract) => scope.includes(contract.room.propertyId));
+    if (!allowed) redirect("/penyewa?err=Akses+ditolak");
+  }
+  if (tenant.contracts.length > 0) {
+    redirect(
+      `/penyewa/${id}?err=${encodeURIComponent(
+        "Penyewa memiliki riwayat kontrak. Nonaktifkan penyewa agar riwayat tetap utuh.",
+      )}`,
+    );
+  }
+
+  let error: string | null = null;
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.maintenance.updateMany({ where: { tenantId: id }, data: { tenantId: null } });
+      await tx.meterReading.updateMany({ where: { tenantId: id }, data: { tenantId: null } });
+      await tx.notificationLog.updateMany({ where: { tenantId: id }, data: { tenantId: null } });
+      await tx.tenant.delete({ where: { id } });
+    });
+    await logAudit({
+      userId: user.id,
+      action: "tenant.delete",
+      entity: "Tenant",
+      entityId: id,
+      payload: { name: tenant.name, phone: tenant.phone },
+    });
+  } catch {
+    error = "Gagal menghapus penyewa. Pastikan tidak ada data terkait.";
+  }
+
+  if (error) redirect(`/penyewa/${id}?err=${encodeURIComponent(error)}`);
+  revalidatePath("/penyewa");
+  redirect("/penyewa?ok=Penyewa+dihapus");
 }

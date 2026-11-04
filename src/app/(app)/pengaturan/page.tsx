@@ -3,7 +3,14 @@ import { prisma } from "@/lib/db";
 import { ROLE_LABELS, NOTIFICATION_STATUS } from "@/lib/constants";
 import { dateID, dateTimeID } from "@/lib/format";
 import { Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
-import { createUserAction, resetPasswordAction, updateUserAction } from "./actions";
+import { ConfirmForm } from "@/components/confirm-form";
+import {
+  createUserAction,
+  deleteUserAction,
+  resetPasswordAction,
+  toggleUserActiveAction,
+  updateUserAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -186,6 +193,32 @@ export default async function SettingsPage({
                             Reset password
                           </button>
                         </form>
+
+                        {item.id !== user.id ? (
+                          <>
+                            <form action={toggleUserActiveAction} style={{ marginTop: 10 }}>
+                              <input type="hidden" name="userId" value={item.id} />
+                              <button className="btn btn-sm" type="submit">
+                                {item.isActive ? "Nonaktifkan pengguna" : "Aktifkan pengguna"}
+                              </button>
+                            </form>
+
+                            <ConfirmForm
+                              action={deleteUserAction}
+                              confirmMessage={`Hapus pengguna ${item.name} (${item.email})? Tindakan ini tidak dapat dibatalkan.`}
+                              style={{ marginTop: 8 }}
+                            >
+                              <input type="hidden" name="userId" value={item.id} />
+                              <button className="btn btn-sm btn-danger" type="submit">
+                                Hapus pengguna
+                              </button>
+                            </ConfirmForm>
+                          </>
+                        ) : (
+                          <p className="small muted" style={{ marginTop: 10, marginBottom: 0 }}>
+                            Akun Anda tidak dapat dinonaktifkan atau dihapus dari sini.
+                          </p>
+                        )}
                       </div>
                     </details>
                   </td>

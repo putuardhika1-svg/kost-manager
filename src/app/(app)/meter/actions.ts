@@ -8,7 +8,13 @@ import { firstError, meterReadingSchema, reasonSchema } from "@/lib/validation";
 import { parseDateInput } from "@/lib/dates";
 import { logAudit } from "@/lib/audit";
 import { saveUpload } from "@/lib/upload";
-import { rejectMeterReading, saveMeterReading, verifyMeterReading } from "@/lib/meter";
+import {
+  deleteMeterReading,
+  rejectMeterReading,
+  saveMeterReading,
+  updateMeterReading,
+  verifyMeterReading,
+} from "@/lib/meter";
 import { attachMeterReadingToInvoice } from "@/lib/billing";
 
 async function guardRoom(roomId: string): Promise<{ userId: string; propertyId: string; role: string }> {
@@ -298,4 +304,70 @@ export async function attachMeterReadingAction(formData: FormData): Promise<void
   revalidatePath("/tagihan");
   revalidatePath(`/tagihan/${invoiceId}`);
   redirect("/meter?ok=Pemakaian+listrik+ditambahkan+ke+tagihan");
+}
+
+export async function updateMeterReadingAction(formData: FormData): Promise<void> {
+  const readingId = String(formData.get("readingId") ?? "");
+  const guard = await guardReading(readingId);
+
+  const parsed = meterReadingSchema.safeParse({
+    currentReading: formData.get("currentReading") ?? "",
+    readingAt: String(formData.get("readingAt") ?? ""),
+    notes: String(formData.get("notes") ?? "").trim(),
+  });
+  if (!parsed.success) {
+    redirect(`/meter?err=${encodeURIComponent(firstError(parsed.error))}`);
+  }
+
+  const readingAt = parseDateInput(parsed.data.readingAt) ?? new Date();
+  let error: string | null = null;
+  try {
+    await updateMeterReading({
+      readingId,
+      currentReading: parsed.data.currentReading,
+      readingAt,
+      notes: parsed.data.notes || null,
+    });
+    await logAudit({
+      userId: guard.userId,
+      action: "meter.update",
+      entity: "MeterReading",
+      entityId: readingId,
+      payload: {
+        currentReading: parsed.data.currentReading,
+        readingAt: readingAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    error = err instanceof Error ? err.message : "Gagal memperbarui pembacaan";
+  }
+
+  if (error) redirect(`/meter?err=${encodeURIComponent(error)}`);
+  revalidatePath("/meter");
+  redirect("/meter?ok=Pembacaan+meter+diperbarui");
+}
+
+export async function deleteMeterReadingAction(formData: FormData): Promise<void> {
+  const readingId = String(formData.get("readingId") ?? "");
+  const guard = await guardReading(readingId);
+  if (guard.role === "staff") {
+    redirect("/meter?err=Hanya+admin/owner+yang+dapat+menghapus+pembacaan");
+  }
+
+  let error: string | null = null;
+  try {
+    await deleteMeterReading(readingId);
+    await logAudit({
+      userId: guard.userId,
+      action: "meter.delete",
+      entity: "MeterReading",
+      entityId: readingId,
+    });
+  } catch (err) {
+    error = err instanceof Error ? err.message : "Gagal menghapus pembacaan";
+  }
+
+  if (error) redirect(`/meter?err=${encodeURIComponent(error)}`);
+  revalidatePath("/meter");
+  redirect("/meter?ok=Pembacaan+meter+dihapus");
 }

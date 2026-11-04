@@ -5,12 +5,15 @@ import { roomScopeWhere } from "@/lib/scope";
 import { dateID, inputDate, rupiah } from "@/lib/format";
 import { METER_SOURCES, METER_STATUS } from "@/lib/constants";
 import { Badge, Card, Empty, Field, Flash, PageHeader, Stat, StatusBadge } from "@/components/ui";
+import { ConfirmForm } from "@/components/confirm-form";
 import {
   attachMeterReadingAction,
   createBaselineAction,
+  deleteMeterReadingAction,
   recordMeterReadingAction,
   rejectMeterReadingAction,
   tenantSubmitMeterReadingAction,
+  updateMeterReadingAction,
   verifyMeterReadingAction,
 } from "./actions";
 
@@ -360,6 +363,53 @@ export default async function MeterPage({
                           </form>
                         </div>
                       </details>
+                      <details style={{ marginTop: 6 }}>
+                        <summary className="btn btn-sm" style={{ cursor: "pointer" }}>
+                          Edit
+                        </summary>
+                        <form
+                          action={updateMeterReadingAction}
+                          style={{ marginTop: 8, minWidth: 240, textAlign: "left" }}
+                        >
+                          <input type="hidden" name="readingId" value={reading.id} />
+                          <div className="field" style={{ marginBottom: 6 }}>
+                            <label className="small">Angka meter (kWh)</label>
+                            <input
+                              name="currentReading"
+                              type="number"
+                              min={0}
+                              step={1}
+                              required
+                              defaultValue={reading.currentReading}
+                            />
+                          </div>
+                          <div className="field" style={{ marginBottom: 6 }}>
+                            <label className="small">Tanggal pembacaan</label>
+                            <input
+                              name="readingAt"
+                              type="date"
+                              defaultValue={inputDate(reading.readingAt)}
+                            />
+                          </div>
+                          <div className="field" style={{ marginBottom: 8 }}>
+                            <label className="small">Catatan</label>
+                            <input name="notes" defaultValue={reading.notes ?? ""} maxLength={500} />
+                          </div>
+                          <button className="btn btn-sm btn-primary" type="submit">
+                            Simpan
+                          </button>
+                        </form>
+                      </details>
+                      <ConfirmForm
+                        action={deleteMeterReadingAction}
+                        confirmMessage={`Hapus pembacaan meter kamar ${reading.room.number} tanggal ${dateID(reading.readingAt)}?`}
+                        style={{ marginTop: 6 }}
+                      >
+                        <input type="hidden" name="readingId" value={reading.id} />
+                        <button className="btn btn-sm btn-danger" type="submit">
+                          Hapus
+                        </button>
+                      </ConfirmForm>
                     </td>
                   </tr>
                 ))}
@@ -450,6 +500,17 @@ export default async function MeterPage({
                             Ke tagihan
                           </button>
                         </form>
+                      ) : null}
+                      {reading.status === "rejected" ? (
+                        <ConfirmForm
+                          action={deleteMeterReadingAction}
+                          confirmMessage={`Hapus pembacaan meter kamar ${reading.room.number} tanggal ${dateID(reading.readingAt)}?`}
+                        >
+                          <input type="hidden" name="readingId" value={reading.id} />
+                          <button className="btn btn-sm btn-danger" type="submit">
+                            Hapus
+                          </button>
+                        </ConfirmForm>
                       ) : null}
                     </td>
                   </tr>

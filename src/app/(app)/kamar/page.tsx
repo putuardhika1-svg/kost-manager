@@ -4,10 +4,26 @@ import { prisma } from "@/lib/db";
 import { propertyScopeWhere, roomScopeWhere } from "@/lib/scope";
 import { dateID, rupiah } from "@/lib/format";
 import { Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
+import { ConfirmForm } from "@/components/confirm-form";
 import { ROOM_STATUS } from "@/lib/constants";
-import { createRoomAction, changeRoomStatusAction } from "./actions";
+import {
+  changeRoomStatusAction,
+  createRoomAction,
+  deleteRoomAction,
+  updateRoomAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
+
+function facilitiesText(value: string | null): string {
+  if (!value) return "";
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.join(", ") : "";
+  } catch {
+    return "";
+  }
+}
 
 const STATUS_OPTIONS = ["kosong", "booked", "perbaikan", "nonaktif"];
 
@@ -113,6 +129,7 @@ export default async function RoomPage({
                   <th>Status</th>
                   <th>Penyewa</th>
                   {canEdit ? <th>Ubah status</th> : null}
+                  {canEdit ? <th>Aksi</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -153,6 +170,83 @@ export default async function RoomPage({
                             Ubah
                           </button>
                         </form>
+                      </td>
+                    ) : null}
+                    {canEdit ? (
+                      <td>
+                        <details>
+                          <summary className="btn btn-sm" style={{ cursor: "pointer" }}>
+                            Edit
+                          </summary>
+                          <form
+                            action={updateRoomAction}
+                            style={{ marginTop: 8, minWidth: 260, textAlign: "left" }}
+                          >
+                            <input type="hidden" name="roomId" value={room.id} />
+                            <div className="field" style={{ marginBottom: 6 }}>
+                              <label className="small">Nomor kamar</label>
+                              <input
+                                name="number"
+                                defaultValue={room.number}
+                                required
+                                maxLength={10}
+                              />
+                            </div>
+                            <div className="field" style={{ marginBottom: 6 }}>
+                              <label className="small">Lantai</label>
+                              <input
+                                name="floor"
+                                type="number"
+                                min={0}
+                                max={50}
+                                defaultValue={room.floor}
+                              />
+                            </div>
+                            <div className="field" style={{ marginBottom: 6 }}>
+                              <label className="small">Tipe</label>
+                              <input name="type" defaultValue={room.type ?? ""} maxLength={60} />
+                            </div>
+                            <div className="field" style={{ marginBottom: 6 }}>
+                              <label className="small">Harga sewa / bulan</label>
+                              <input
+                                name="monthlyPrice"
+                                type="number"
+                                min={1}
+                                required
+                                defaultValue={room.monthlyPrice}
+                              />
+                            </div>
+                            <div className="field" style={{ marginBottom: 6 }}>
+                              <label className="small">No. meter listrik</label>
+                              <input
+                                name="meterSerial"
+                                defaultValue={room.meterSerial ?? ""}
+                                maxLength={60}
+                              />
+                            </div>
+                            <div className="field" style={{ marginBottom: 8 }}>
+                              <label className="small">Fasilitas (pisahkan koma)</label>
+                              <input
+                                name="facilities"
+                                defaultValue={facilitiesText(room.facilities)}
+                                maxLength={500}
+                              />
+                            </div>
+                            <button className="btn btn-sm btn-primary" type="submit">
+                              Simpan kamar
+                            </button>
+                          </form>
+                        </details>
+                        <ConfirmForm
+                          action={deleteRoomAction}
+                          confirmMessage={`Hapus kamar ${room.number}? Tindakan ini tidak dapat dibatalkan.`}
+                          style={{ marginTop: 6 }}
+                        >
+                          <input type="hidden" name="roomId" value={room.id} />
+                          <button className="btn btn-sm btn-danger" type="submit">
+                            Hapus
+                          </button>
+                        </ConfirmForm>
                       </td>
                     ) : null}
                   </tr>
@@ -198,8 +292,11 @@ export default async function RoomPage({
                   ))}
                 </select>
               </Field>
+              <Field label="No. meter listrik" hint="Opsional, untuk pencatatan kWh">
+                <input name="meterSerial" placeholder="MTR-001" maxLength={60} />
+              </Field>
               <Field label="Fasilitas" hint="Pisahkan dengan koma: AC, kasur, lemari" full>
-                <input name="facilities" placeholder="AC, kasur, lemari, kamar mandi dalam" />
+                <input name="facilities" placeholder="AC, kasur, lemari, kamar mandi dalam" maxLength={500} />
               </Field>
             </div>
             <div className="form-actions">

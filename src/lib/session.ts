@@ -7,6 +7,7 @@ export type SessionPayload = {
   name: string;
   email: string;
   role: string;
+  exp?: number | null;
 };
 
 export function sessionSecret(): Uint8Array {
@@ -26,6 +27,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       name: String(payload.name ?? ""),
       email: String(payload.email ?? ""),
       role: String(payload.role ?? ""),
+      exp: typeof payload.exp === "number" ? payload.exp : null,
     };
   } catch {
     return null;

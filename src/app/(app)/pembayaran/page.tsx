@@ -2,10 +2,16 @@ import Link from "next/link";
 import { propertyScope, requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { paymentScopeWhere } from "@/lib/scope";
-import { dateID, rupiah } from "@/lib/format";
+import { dateID, inputDate, rupiah } from "@/lib/format";
 import { PAYMENT_METHODS, PAYMENT_STATUS } from "@/lib/constants";
 import { Card, Empty, Flash, PageHeader, Stat, StatusBadge } from "@/components/ui";
-import { rejectPaymentAction, verifyPaymentAction } from "./actions";
+import { ConfirmForm } from "@/components/confirm-form";
+import {
+  deletePaymentAction,
+  rejectPaymentAction,
+  updatePaymentAction,
+  verifyPaymentAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +155,50 @@ export default async function PaymentInboxPage({
                             </button>
                           </form>
                           <details>
+                            <summary className="btn btn-sm" style={{ cursor: "pointer" }}>
+                              Edit
+                            </summary>
+                            <form
+                              action={updatePaymentAction}
+                              style={{ marginTop: 8, minWidth: 240, textAlign: "left" }}
+                            >
+                              <input type="hidden" name="paymentId" value={payment.id} />
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Metode</label>
+                                <select name="method" defaultValue={payment.method}>
+                                  <option value="transfer">Transfer</option>
+                                  <option value="qris">QRIS</option>
+                                  <option value="cash">Tunai</option>
+                                </select>
+                              </div>
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Nominal (Rp)</label>
+                                <input
+                                  name="amount"
+                                  type="number"
+                                  min={1}
+                                  required
+                                  defaultValue={payment.amount}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Tanggal bayar</label>
+                                <input
+                                  name="paidAt"
+                                  type="date"
+                                  defaultValue={inputDate(payment.paidAt)}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 8 }}>
+                                <label className="small">Catatan</label>
+                                <input name="notes" defaultValue={payment.notes ?? ""} maxLength={500} />
+                              </div>
+                              <button className="btn btn-sm btn-primary" type="submit">
+                                Simpan
+                              </button>
+                            </form>
+                          </details>
+                          <details>
                             <summary className="btn btn-sm btn-danger" style={{ cursor: "pointer" }}>
                               Tolak
                             </summary>
@@ -170,6 +220,18 @@ export default async function PaymentInboxPage({
                       ) : (
                         <span className="small muted">-</span>
                       )}
+                      {payment.status !== "verified" ? (
+                        <ConfirmForm
+                          action={deletePaymentAction}
+                          confirmMessage={`Hapus pembayaran ${rupiah(payment.amount)} milik ${payment.invoice.contract.tenant.name}?`}
+                          style={{ marginTop: 6 }}
+                        >
+                          <input type="hidden" name="paymentId" value={payment.id} />
+                          <button className="btn btn-sm btn-danger" type="submit">
+                            Hapus
+                          </button>
+                        </ConfirmForm>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

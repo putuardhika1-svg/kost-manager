@@ -18,10 +18,19 @@ export const roomSchema = z.object({
   propertyId: z.string().min(1, "Properti wajib dipilih"),
   number: z.string().min(1, "Nomor kamar wajib diisi").max(10, "Nomor kamar maksimal 10 karakter"),
   floor: z.coerce.number().int().min(0, "Lantai tidak valid").max(50, "Lantai tidak valid"),
-  type: z.string().optional(),
+  type: z.string().max(60, "Tipe kamar maksimal 60 karakter").optional(),
   monthlyPrice: z.coerce.number().int().positive("Harga sewa harus lebih dari 0"),
   status: z.enum(["kosong", "terisi", "booked", "perbaikan", "nonaktif"]),
-  facilities: z.string().optional(),
+  facilities: z.string().max(500, "Fasilitas maksimal 500 karakter").optional(),
+  meterSerial: z.string().max(60, "Nomor meter maksimal 60 karakter").optional(),
+});
+
+export const tenantStatusSchema = z.object({
+  status: z.enum(["aktif", "nonaktif"]),
+});
+
+export const invoiceDueDateSchema = z.object({
+  dueDate: z.string().min(1, "Tanggal jatuh tempo wajib diisi"),
 });
 
 export const tenantSchema = z.object({
@@ -150,6 +159,12 @@ export const maintenanceSchema = z.object({
 });
 
 export const maintenanceUpdateSchema = z.object({
+  title: z.string().min(3, "Judul minimal 3 karakter").max(120, "Judul maksimal 120 karakter"),
+  description: z
+    .string()
+    .min(5, "Deskripsi minimal 5 karakter")
+    .max(1000, "Deskripsi maksimal 1000 karakter"),
+  category: z.enum(["umum", "listrik", "air", "kebersihan", "perabot", "keamanan"]),
   status: z.enum(["baru", "diproses", "selesai", "ditutup"]),
   priority: z.enum(["rendah", "sedang", "tinggi"]),
   assignedTo: z.string().max(120, "Nama teknisi maksimal 120 karakter").optional(),

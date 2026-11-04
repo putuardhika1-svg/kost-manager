@@ -5,7 +5,12 @@ import { prisma } from "@/lib/db";
 import { dateID, rupiah } from "@/lib/format";
 import { Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
 import { INVOICE_STATUS } from "@/lib/constants";
-import { updateTenantAction } from "../actions";
+import { ConfirmForm } from "@/components/confirm-form";
+import {
+  deleteTenantAction,
+  setTenantStatusAction,
+  updateTenantAction,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +129,47 @@ export default async function TenantDetailPage({
           </form>
         </Card>
       </div>
+
+      <Card
+        title="Pengaturan penyewa"
+        description="Nonaktifkan penyewa untuk menandai tidak aktif tanpa menghapus riwayat. Hapus permanen hanya tersedia bila belum memiliki kontrak."
+      >
+        <div className="grid-2">
+          <form action={setTenantStatusAction}>
+            <input type="hidden" name="id" value={tenant.id} />
+            <div className="form-grid">
+              <Field label="Status penyewa" hint="Penyewa nonaktif tidak dapat dibuatkan kontrak baru.">
+                <select name="status" defaultValue={tenant.status}>
+                  <option value="aktif">Aktif</option>
+                  <option value="nonaktif">Nonaktif</option>
+                </select>
+              </Field>
+            </div>
+            <div className="form-actions">
+              <button className="btn btn-primary" type="submit">
+                Simpan status
+              </button>
+            </div>
+          </form>
+
+          <div>
+            <ConfirmForm
+              action={deleteTenantAction}
+              confirmMessage={`Hapus penyewa ${tenant.name}? Tindakan ini tidak dapat dibatalkan.`}
+            >
+              <input type="hidden" name="id" value={tenant.id} />
+              <button className="btn btn-danger" type="submit" disabled={tenant.contracts.length > 0}>
+                Hapus penyewa
+              </button>
+            </ConfirmForm>
+            {tenant.contracts.length > 0 ? (
+              <p className="small muted" style={{ marginBottom: 0 }}>
+                Penyewa sudah memiliki riwayat kontrak, gunakan status nonaktif.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </Card>
 
       <Card title="Riwayat kontrak" tight>
         {tenant.contracts.length === 0 ? (

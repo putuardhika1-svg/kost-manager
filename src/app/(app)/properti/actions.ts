@@ -220,6 +220,162 @@ export async function createPaymentChannelAction(formData: FormData): Promise<vo
   redirect(`/properti/${propertyId}?ok=Metode+pembayaran+ditambahkan`);
 }
 
+export async function deletePropertyAction(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/properti?err=ID+properti+tidak+valid");
+  const userId = await guardProperty(id);
+
+  const property = await prisma.property.findUnique({
+    where: { id },
+    include: {
+      rooms: {
+        select: {
+          number: true,
+          contracts: { select: { id: true } },
+          maintenance: { select: { id: true } },
+        },
+      },
+    },
+  });
+  if (!property) redirect("/properti?err=Properti+tidak+ditemukan");
+
+  const blocked = property.rooms.find(
+    (room) => room.contracts.length > 0 || room.maintenance.length > 0,
+  );
+  if (blocked) {
+    redirect(
+      `/properti/${id}?err=${encodeURIComponent(
+        "Properti masih memiliki kontrak atau tiket perbaikan. Nonaktifkan kamar dan selesaikan data terkait terlebih dahulu.",
+      )}`,
+    );
+  }
+
+  let error: string | null = null;
+  try {
+    await prisma.property.delete({ where: { id } });
+    await logAudit({
+      userId,
+      action: "property.delete",
+      entity: "Property",
+      entityId: id,
+      payload: { name: property.name, code: property.code },
+    });
+  } catch {
+    error = "Gagal menghapus properti. Pastikan tidak ada data terkait.";
+  }
+
+  if (error) redirect(`/properti/${id}?err=${encodeURIComponent(error)}`);
+  revalidatePath("/properti");
+  revalidatePath("/dashboard");
+  redirect("/properti?ok=Properti+dihapus");
+}
+
+export async function updatePaymentChannelAction(formData: FormData): Promise<void> {
+  const propertyId = String(formData.get("propertyId") ?? "");
+  const channelId = String(formData.get("channelId") ?? "");
+  if (!propertyId || !channelId) redirect("/properti?err=Data+tidak+valid");
+  const userId = await guardProperty(propertyId);
+
+  const channel = await prisma.paymentChannel.findUnique({ where: { id: channelId } });
+  if (!channel || channel.propertyId !== propertyId) {
+    redirect(`/properti/${propertyId}?err=Metode+pembayaran+tidak+ditemukan`);
+  }
+
+  const parsed = paymentChannelSchema.safeParse({
+    type: String(formData.get("type") ?? "bank"),
+    label: String(formData.get("label") ?? "").trim(),
+    bankName: String(formData.get("bankName") ?? "").trim(),
+    accountNumber: String(formData.get("accountNumber") ?? "").trim(),
+    accountHolder: String(formData.get("accountHolder") ?? "").trim(),
+    instructions: String(formData.get("instructions") ?? "").trim(),
+  });
+  if (!parsed.success) {
+    redirect(`/properti/${propertyId}?err=${encodeURIComponent(firstError(parsed.error))}`);
+  }
+
+  const data = parsed.data;
+  if (data.type === "bank" && (!data.bankName || !data.accountNumber || !data.accountHolder)) {
+    redirect(
+      `/properti/${propertyId}?err=${encodeURIComponent("Nama bank, nomor rekening, dan atas nama wajib diisi")}`,
+    );
+  }
+
+  let error: string | null = null;
+  try {
+    const uploadedQris = data.type === "qris" ? await saveUpload(formData.get("qris"), "qris") : null;
+    if (data.type === "qris" && !uploadedQris && !channel.qrisUrl) {
+      throw new Error("Unggah gambar QRIS");
+    }
+
+    await prisma.paymentChannel.update({
+      where: { id: channelId },
+      data: {
+        type: data.type,
+        label: data.label,
+        bankName: data.type === "bank" ? data.bankName || null : null,
+        accountNumber: data.type === "bank" ? data.accountNumber || null : null,
+        accountHolder: data.type === "bank" ? data.accountHolder || null : null,
+        qrisUrl: data.type === "qris" ? uploadedQris ?? channel.qrisUrl : null,
+        instructions: data.instructions || null,
+      },
+    });
+
+    await logAudit({
+      userId,
+      action: "payment.channel.update",
+      entity: "PaymentChannel",
+      entityId: channelId,
+      payload: { propertyId, type: data.type, label: data.label },
+    });
+  } catch (err) {
+    error = err instanceof Error ? err.message : "Gagal memperbarui metode pembayaran";
+  }
+
+  if (error) redirect(`/properti/${propertyId}?err=${encodeURIComponent(error)}`);
+  revalidatePath(`/properti/${propertyId}`);
+  redirect(`/properti/${propertyId}?ok=Metode+pembayaran+diperbarui`);
+}
+
+export async function deletePaymentChannelAction(formData: FormData): Promise<void> {
+  const propertyId = String(formData.get("propertyId") ?? "");
+  const channelId = String(formData.get("channelId") ?? "");
+  if (!propertyId || !channelId) redirect("/properti?err=Data+tidak+valid");
+  const userId = await guardProperty(propertyId);
+
+  const channel = await prisma.paymentChannel.findUnique({
+    where: { id: channelId },
+    include: { _count: { select: { payments: true } } },
+  });
+  if (!channel || channel.propertyId !== propertyId) {
+    redirect(`/properti/${propertyId}?err=Metode+pembayaran+tidak+ditemukan`);
+  }
+  if (channel._count.payments > 0) {
+    redirect(
+      `/properti/${propertyId}?err=${encodeURIComponent(
+        "Metode pembayaran sudah dipakai pada pembayaran. Nonaktifkan saja agar riwayat tetap utuh.",
+      )}`,
+    );
+  }
+
+  let error: string | null = null;
+  try {
+    await prisma.paymentChannel.delete({ where: { id: channelId } });
+    await logAudit({
+      userId,
+      action: "payment.channel.delete",
+      entity: "PaymentChannel",
+      entityId: channelId,
+      payload: { propertyId, label: channel.label },
+    });
+  } catch {
+    error = "Gagal menghapus metode pembayaran.";
+  }
+
+  if (error) redirect(`/properti/${propertyId}?err=${encodeURIComponent(error)}`);
+  revalidatePath(`/properti/${propertyId}`);
+  redirect(`/properti/${propertyId}?ok=Metode+pembayaran+dihapus`);
+}
+
 export async function togglePaymentChannelAction(formData: FormData): Promise<void> {
   const channelId = String(formData.get("channelId") ?? "");
   const propertyId = String(formData.get("propertyId") ?? "");

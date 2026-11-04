@@ -5,12 +5,15 @@ import { contractScopeWhere, roomScopeWhere, tenantScopeWhere } from "@/lib/scop
 import { dateID, inputDate, rupiah } from "@/lib/format";
 import { Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
 import { currentYearMonth, lastDayOfMonthISO, firstDayOfMonthISO } from "@/lib/dates";
+import { ConfirmForm } from "@/components/confirm-form";
 import {
   approveRegistrationAction,
   createContractAction,
+  deleteContractAction,
   endContractAction,
   rejectRegistrationAction,
   sendContractReminderAction,
+  updateContractAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -142,6 +145,83 @@ export default async function ContractPage({
                       <td className="num">{rupiah(contract.deposit)}</td>
                       <td className="num">{outstanding ? rupiah(outstanding) : "-"}</td>
                       <td className="right">
+                        {contract.status === "active" || contract.status === "pending" ? (
+                          <details style={{ marginBottom: 6 }}>
+                            <summary className="btn btn-sm" style={{ cursor: "pointer" }}>
+                              Edit
+                            </summary>
+                            <form
+                              action={updateContractAction}
+                              style={{ marginTop: 8, minWidth: 280, textAlign: "left" }}
+                            >
+                              <input type="hidden" name="contractId" value={contract.id} />
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Tanggal mulai</label>
+                                <input
+                                  name="startDate"
+                                  type="date"
+                                  required
+                                  defaultValue={inputDate(contract.startDate)}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Tanggal berakhir</label>
+                                <input
+                                  name="endDate"
+                                  type="date"
+                                  required
+                                  defaultValue={inputDate(contract.endDate)}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Harga sewa / bulan</label>
+                                <input
+                                  name="rentAmount"
+                                  type="number"
+                                  min={1}
+                                  required
+                                  defaultValue={contract.rentAmount}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Deposit</label>
+                                <input
+                                  name="deposit"
+                                  type="number"
+                                  min={0}
+                                  defaultValue={contract.deposit}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Tanggal tagih (1–28)</label>
+                                <input
+                                  name="billingDay"
+                                  type="number"
+                                  min={1}
+                                  max={28}
+                                  defaultValue={contract.billingDay}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 6 }}>
+                                <label className="small">Angka awal meter (kWh)</label>
+                                <input
+                                  name="electricityStartReading"
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  defaultValue={contract.electricityStartReading ?? 0}
+                                />
+                              </div>
+                              <div className="field" style={{ marginBottom: 8 }}>
+                                <label className="small">Catatan</label>
+                                <input name="notes" defaultValue={contract.notes ?? ""} maxLength={500} />
+                              </div>
+                              <button className="btn btn-sm btn-primary" type="submit">
+                                Simpan kontrak
+                              </button>
+                            </form>
+                          </details>
+                        ) : null}
                         {contract.status === "active" ? (
                           <>
                           {Math.ceil((contract.endDate.getTime() - Date.now()) / 86_400_000) <= 30 ? (
@@ -286,6 +366,18 @@ export default async function ContractPage({
                         ) : (
                           <span className="muted small">-</span>
                         )}
+                        {contract.invoices.length === 0 ? (
+                          <ConfirmForm
+                            action={deleteContractAction}
+                            confirmMessage={`Hapus kontrak ${contract.tenant.name} - kamar ${contract.room.number}? Tindakan ini tidak dapat dibatalkan.`}
+                            style={{ marginTop: 6 }}
+                          >
+                            <input type="hidden" name="contractId" value={contract.id} />
+                            <button className="btn btn-sm btn-danger" type="submit">
+                              Hapus
+                            </button>
+                          </ConfirmForm>
+                        ) : null}
                       </td>
                     </tr>
                   );

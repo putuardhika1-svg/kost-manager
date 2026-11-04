@@ -200,3 +200,82 @@ export async function resetPasswordAction(formData: FormData): Promise<void> {
   revalidatePath("/pengaturan");
   redirect("/pengaturan?ok=Password+diperbarui");
 }
+
+export async function toggleUserActiveAction(formData: FormData): Promise<void> {
+  const owner = await requireRole(["owner"]);
+  const userId = String(formData.get("userId") ?? "");
+  if (!userId) redirect("/pengaturan?err=ID+pengguna+tidak+valid");
+  if (userId === owner.id) {
+    redirect(`/pengaturan?err=${encodeURIComponent("Tidak dapat menonaktifkan akun sendiri")}`);
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: userId } });
+  if (!target) redirect("/pengaturan?err=Pengguna+tidak+ditemukan");
+
+  const nextActive = !target.isActive;
+  if (!nextActive && target.role === "owner") {
+    const owners = await prisma.user.count({ where: { role: "owner", isActive: true } });
+    if (owners <= 1) {
+      redirect(`/pengaturan?err=${encodeURIComponent("Minimal harus ada satu owner aktif")}`);
+    }
+  }
+
+  await prisma.user.update({ where: { id: userId }, data: { isActive: nextActive } });
+  await logAudit({
+    userId: owner.id,
+    action: "user.toggle",
+    entity: "User",
+    entityId: userId,
+    payload: { from: target.isActive, to: nextActive },
+  });
+
+  revalidatePath("/pengaturan");
+  redirect(`/pengaturan?ok=Status+pengguna+${nextActive ? "diaktifkan" : "dinonaktifkan"}`);
+}
+
+export async function deleteUserAction(formData: FormData): Promise<void> {
+  const owner = await requireRole(["owner"]);
+  const userId = String(formData.get("userId") ?? "");
+  if (!userId) redirect("/pengaturan?err=ID+pengguna+tidak+valid");
+  if (userId === owner.id) {
+    redirect(`/pengaturan?err=${encodeURIComponent("Tidak dapat menghapus akun sendiri")}`);
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: userId } });
+  if (!target) redirect("/pengaturan?err=Pengguna+tidak+ditemukan");
+
+  if (target.role === "owner") {
+    const owners = await prisma.user.count({ where: { role: "owner", isActive: true } });
+    if (owners <= 1) {
+      redirect(`/pengaturan?err=${encodeURIComponent("Minimal harus ada satu owner aktif")}`);
+    }
+  }
+
+  let error: string | null = null;
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.updateMany({ where: { userId }, data: { userId: null } });
+      await tx.payment.updateMany({ where: { verifiedById: userId }, data: { verifiedById: null } });
+      await tx.meterReading.updateMany({ where: { verifiedById: userId }, data: { verifiedById: null } });
+      await tx.invoice.updateMany({
+        where: { requirementsWaivedById: userId },
+        data: { requirementsWaivedById: null },
+      });
+      await tx.userProperty.deleteMany({ where: { userId } });
+      await tx.user.delete({ where: { id: userId } });
+    });
+    await logAudit({
+      userId: owner.id,
+      action: "user.delete",
+      entity: "User",
+      entityId: userId,
+      payload: { email: target.email, role: target.role },
+    });
+  } catch {
+    error = "Gagal menghapus pengguna.";
+  }
+
+  if (error) redirect(`/pengaturan?err=${encodeURIComponent(error)}`);
+  revalidatePath("/pengaturan");
+  redirect("/pengaturan?ok=Pengguna+dihapus");
+}

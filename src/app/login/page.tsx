@@ -51,8 +51,10 @@ export default async function LoginPage({
 
         {process.env.NODE_ENV !== "production" ? (
           <div className="auth-demo">
-            <strong>Akun demo (setelah seeding):</strong>
-            <div>Owner — owner@kost.local / owner12345</div>
+            <strong>Akun demo lokal:</strong>
+            <div>
+              Owner — {process.env.OWNER_EMAIL ?? "owner@kost.local"} / lihat OWNER_PASSWORD di .env
+            </div>
             <div>Admin — admin@kost.local / admin12345</div>
             <div>Staff — staff@kost.local / staff12345</div>
             <div>Penyewa — tenant@kost.local / tenant12345</div>
