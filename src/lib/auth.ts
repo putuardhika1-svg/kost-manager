@@ -12,7 +12,7 @@ import type { Prisma, Tenant, User, UserProperty } from "@prisma/client";
 export { SESSION_COOKIE };
 export type { SessionPayload };
 
-const SESSION_HOURS = 12;
+const SESSION_MINUTES = 10;
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
@@ -27,7 +27,7 @@ export async function signSession(payload: SessionPayload): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)
     .setIssuedAt()
-    .setExpirationTime(`${SESSION_HOURS}h`)
+    .setExpirationTime(`${SESSION_MINUTES}m`)
     .sign(sessionSecret());
 }
 
@@ -38,7 +38,7 @@ export async function setSessionCookie(token: string): Promise<void> {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: SESSION_HOURS * 60 * 60,
+    maxAge: SESSION_MINUTES * 60,
   });
 }
 

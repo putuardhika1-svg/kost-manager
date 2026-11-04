@@ -80,7 +80,7 @@ prisma/seed.ts        data demo (destruktif)
 ## Keamanan
 
 - Password di-hash bcrypt (10 rounds; owner bootstrap 12).
-- Sesi JWT HS256 di cookie `httpOnly`, `sameSite=lax`, 12 jam.
+- Sesi JWT HS256 di cookie `httpOnly`, `sameSite=lax`, 10 menit.
 - Middleware memeriksa token sebelum halaman dirender.
 - Setiap query difilter `propertyScope`; tenant hanya melihat data miliknya.
 - Bukti bayar, foto meter, dan QRIS disimpan privat di Supabase Storage; akses lewat signed URL sementara dan dicek kepemilikannya.

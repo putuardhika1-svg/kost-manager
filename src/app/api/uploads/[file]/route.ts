@@ -55,40 +55,49 @@ export async function GET(
       allowed = scope === null || scope.includes(contract.room.propertyId);
     }
   } else {
-    const channel = await prisma.paymentChannel.findFirst({
-      where: { qrisUrl: proofUrl },
-      select: { propertyId: true },
+    const avatarOwner = await prisma.user.findFirst({
+      where: { avatarUrl: proofUrl },
+      select: { id: true },
     });
-    if (channel) {
-      allowed = user.role === "owner";
-      if (!allowed && (user.role === "admin" || user.role === "staff")) {
-        const scope = await propertyScope(user);
-        allowed = scope === null || scope.includes(channel.propertyId);
-      }
-      if (!allowed && user.role === "tenant" && user.tenant) {
-        const contracts = await prisma.contract.count({
-          where: {
-            tenantId: user.tenant.id,
-            room: { propertyId: channel.propertyId },
-          },
-        });
-        allowed = contracts > 0;
-      }
+
+    if (avatarOwner) {
+      allowed = true;
     } else {
-      const reading = await prisma.meterReading.findFirst({
-        where: { photoUrl: proofUrl },
-        select: {
-          tenantId: true,
-          room: { select: { propertyId: true } },
-        },
+      const channel = await prisma.paymentChannel.findFirst({
+        where: { qrisUrl: proofUrl },
+        select: { propertyId: true },
       });
-      if (reading) {
-        allowed =
-          user.role === "owner" ||
-          (user.role === "tenant" && user.tenant?.id === reading.tenantId);
+      if (channel) {
+        allowed = user.role === "owner";
         if (!allowed && (user.role === "admin" || user.role === "staff")) {
           const scope = await propertyScope(user);
-          allowed = scope === null || scope.includes(reading.room.propertyId);
+          allowed = scope === null || scope.includes(channel.propertyId);
+        }
+        if (!allowed && user.role === "tenant" && user.tenant) {
+          const contracts = await prisma.contract.count({
+            where: {
+              tenantId: user.tenant.id,
+              room: { propertyId: channel.propertyId },
+            },
+          });
+          allowed = contracts > 0;
+        }
+      } else {
+        const reading = await prisma.meterReading.findFirst({
+          where: { photoUrl: proofUrl },
+          select: {
+            tenantId: true,
+            room: { select: { propertyId: true } },
+          },
+        });
+        if (reading) {
+          allowed =
+            user.role === "owner" ||
+            (user.role === "tenant" && user.tenant?.id === reading.tenantId);
+          if (!allowed && (user.role === "admin" || user.role === "staff")) {
+            const scope = await propertyScope(user);
+            allowed = scope === null || scope.includes(reading.room.propertyId);
+          }
         }
       }
     }

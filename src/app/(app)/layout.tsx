@@ -2,7 +2,7 @@ import { getSession, requireUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/constants";
 import { NavLink } from "@/components/nav-link";
 import { SessionStatus } from "@/components/session-status";
-import { logoutAction } from "./actions";
+import { logoutAction, removeAvatarAction, updateAvatarAction } from "./actions";
 
 type NavItem = { href: string; label: string; roles: string[] };
 
@@ -26,10 +26,53 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const items = NAV.filter((item) => item.roles.includes(user.role));
   const roleLabel = ROLE_LABELS[user.role] ?? user.role;
   const expiresAt = session?.exp ? session.exp * 1000 : null;
+  const initials =
+    user.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "U";
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
+        <div className="sidebar-profile">
+          <div className="profile-avatar">
+            {user.avatarUrl ? (
+              <img src={user.avatarUrl} alt={`Foto ${user.name}`} />
+            ) : (
+              <span>{initials}</span>
+            )}
+          </div>
+          <div className="profile-meta">
+            <div className="profile-name">{user.name}</div>
+            <div className="profile-role">{roleLabel}</div>
+            <details className="profile-edit">
+              <summary>Ganti foto</summary>
+              <form action={updateAvatarAction}>
+                <input
+                  name="avatar"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  required
+                />
+                <button className="btn btn-sm" type="submit">
+                  Simpan foto
+                </button>
+              </form>
+              {user.avatarUrl ? (
+                <form action={removeAvatarAction}>
+                  <button className="btn btn-sm btn-danger" type="submit">
+                    Hapus foto
+                  </button>
+                </form>
+              ) : null}
+            </details>
+          </div>
+        </div>
+
         <div className="nav-section" style={{ paddingTop: 4 }}>
           Menu
         </div>
@@ -40,10 +83,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="sidebar-user-name">{user.name}</div>
-            <div className="sidebar-user-role">{roleLabel}</div>
-          </div>
           <SessionStatus expiresAt={expiresAt} />
           <form action={logoutAction}>
             <button className="btn btn-sm" type="submit">

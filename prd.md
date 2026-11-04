@@ -403,7 +403,7 @@ Setting (key PK, value JSONB, updated_at)
 
 ### 10.1 Autentikasi & Otorisasi
 
-- **FR-01** Login dengan email + password; sesi berlaku maks. 12 jam; refresh token 7 hari.
+- **FR-01** Login dengan email + password; sesi berlaku 10 menit.
 - **FR-02** Sistem menerapkan RBAC sesuai matriks bagian 13.
 - **FR-03** Owner dapat membatasi Admin/Staff hanya pada properti tertentu (`UserProperty`).
 - **FR-04** Semua aksi ubah data tercatat di `AuditLog` (siapa, kapan, entitas, payload sebelum/sesudah).

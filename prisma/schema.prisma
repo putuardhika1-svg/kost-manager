@@ -19,6 +19,7 @@ model User {
   email        String         @unique
   passwordHash String
   phone        String?
+  avatarUrl    String?
   role         String         @default("admin") // owner | admin | staff | tenant
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
