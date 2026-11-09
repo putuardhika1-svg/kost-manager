@@ -2,6 +2,7 @@ import { getSession, requireUser } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/constants";
 import { NavLink } from "@/components/nav-link";
 import { SessionStatus } from "@/components/session-status";
+import { PhotoInput } from "@/components/photo-input";
 import { logoutAction, removeAvatarAction, updateAvatarAction } from "./actions";
 
 type NavItem = { href: string; label: string; roles: string[] };
@@ -52,12 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <details className="profile-edit">
               <summary>Ganti foto</summary>
               <form action={updateAvatarAction}>
-                <input
-                  name="avatar"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  required
-                />
+                <PhotoInput name="avatar" required facingMode="user" watermark={false} />
                 <button className="btn btn-sm" type="submit">
                   Simpan foto
                 </button>

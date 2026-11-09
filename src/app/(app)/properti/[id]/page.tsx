@@ -6,6 +6,7 @@ import { rupiah } from "@/lib/format";
 import { Badge, Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/components/ui";
 import { ROOM_STATUS } from "@/lib/constants";
 import { ConfirmForm } from "@/components/confirm-form";
+import { PhotoInput } from "@/components/photo-input";
 import {
   createPaymentChannelAction,
   deletePaymentChannelAction,
@@ -275,11 +276,7 @@ export default async function PropertyDetailPage({
                           </div>
                           <div className="field" style={{ marginBottom: 6 }}>
                             <label className="small">Gambar QRIS (opsional)</label>
-                            <input
-                              name="qris"
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                            />
+                            <PhotoInput name="qris" watermark={false} />
                           </div>
                           <div className="field" style={{ marginBottom: 8 }}>
                             <label className="small">Instruksi</label>
@@ -345,7 +342,7 @@ export default async function PropertyDetailPage({
                 <input name="accountHolder" maxLength={100} placeholder="Budi Santoso" />
               </Field>
               <Field label="Gambar QRIS" hint="Wajib untuk tipe QRIS, maks. 4 MB">
-                <input name="qris" type="file" accept="image/jpeg,image/png,image/webp" />
+                <PhotoInput name="qris" watermark={false} />
               </Field>
               <Field label="Instruksi" full>
                 <input name="instructions" maxLength={500} placeholder="Bayar tunai di kantor, Senin–Sabtu 08.00–17.00" />

@@ -15,6 +15,7 @@ import { Badge, Card, Empty, Field, Flash, PageHeader, StatusBadge } from "@/com
 import { RequirementList } from "@/components/requirements";
 import { getInvoiceRequirements } from "@/lib/requirements";
 import { ConfirmForm } from "@/components/confirm-form";
+import { PhotoInput } from "@/components/photo-input";
 import {
   addItemAction,
   deleteInvoiceAction,
@@ -494,11 +495,11 @@ export default async function InvoiceDetailPage({
                 <input name="paidAt" type="date" defaultValue={inputDate(new Date())} />
               </Field>
               <Field label="Bukti transfer (JPG/PNG/WEBP/PDF)" hint="Maks. 4 MB" full>
-                <input
+                <PhotoInput
                   name="proof"
-                  type="file"
                   required
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  allowPdf
+                  hint="Foto langsung dari kamera, atau pilih file/PDF."
                 />
               </Field>
               <Field label="Catatan" full>
@@ -574,7 +575,7 @@ export default async function InvoiceDetailPage({
                     <input name="paidAt" type="date" defaultValue={inputDate(new Date())} />
                   </Field>
                   <Field label="Bukti (JPG/PNG/PDF)" hint="Maks. 4 MB, opsional untuk tunai">
-                    <input name="proof" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" />
+                    <PhotoInput name="proof" allowPdf />
                   </Field>
                   <Field label="Catatan" full>
                     <input name="notes" placeholder="Opsional" />

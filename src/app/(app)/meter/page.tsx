@@ -6,6 +6,7 @@ import { dateID, inputDate, rupiah } from "@/lib/format";
 import { METER_SOURCES, METER_STATUS } from "@/lib/constants";
 import { Badge, Card, Empty, Field, Flash, PageHeader, Stat, StatusBadge } from "@/components/ui";
 import { ConfirmForm } from "@/components/confirm-form";
+import { PhotoInput } from "@/components/photo-input";
 import {
   attachMeterReadingAction,
   createBaselineAction,
@@ -130,12 +131,7 @@ export default async function MeterPage({
                 <input name="readingAt" type="date" defaultValue={inputDate(new Date())} />
               </Field>
               <Field label="Foto meter" hint="JPG/PNG/WEBP, maks. 4 MB" full>
-                <input
-                  name="photo"
-                  type="file"
-                  required
-                  accept="image/jpeg,image/png,image/webp"
-                />
+                <PhotoInput name="photo" required hint="Foto langsung dari kamera agar terbaru." />
               </Field>
               <Field label="Catatan" full>
                 <input name="notes" maxLength={500} placeholder="Opsional" />
@@ -442,7 +438,7 @@ export default async function MeterPage({
                 <input name="readingAt" type="date" defaultValue={inputDate(new Date())} />
               </Field>
               <Field label="Foto meter (opsional)">
-                <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
+                <PhotoInput name="photo" hint="Foto langsung dari kamera agar terbaru." />
               </Field>
               <Field label="Catatan" full>
                 <input name="notes" maxLength={500} placeholder="Opsional" />
