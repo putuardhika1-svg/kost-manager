@@ -131,7 +131,7 @@ export default async function MeterPage({
                 <input name="readingAt" type="date" defaultValue={inputDate(new Date())} />
               </Field>
               <Field label="Foto meter" hint="JPG/PNG/WEBP, maks. 4 MB" full>
-                <PhotoInput name="photo" required hint="Foto langsung dari kamera agar terbaru." />
+                <PhotoInput name="photo" required cameraOnly hint="Wajib foto langsung dari kamera agar terbaru." />
               </Field>
               <Field label="Catatan" full>
                 <input name="notes" maxLength={500} placeholder="Opsional" />
@@ -438,7 +438,7 @@ export default async function MeterPage({
                 <input name="readingAt" type="date" defaultValue={inputDate(new Date())} />
               </Field>
               <Field label="Foto meter (opsional)">
-                <PhotoInput name="photo" hint="Foto langsung dari kamera agar terbaru." />
+                <PhotoInput name="photo" cameraOnly hint="Wajib foto langsung dari kamera agar terbaru." />
               </Field>
               <Field label="Catatan" full>
                 <input name="notes" maxLength={500} placeholder="Opsional" />

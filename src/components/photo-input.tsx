@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 type Props = {
   name: string;
   required?: boolean;
+  allowPdf?: boolean;
+  cameraOnly?: boolean;
   facingMode?: "environment" | "user";
   hint?: string;
   watermark?: boolean;
@@ -41,6 +43,8 @@ function drawWatermark(ctx: CanvasRenderingContext2D, width: number, height: num
 export function PhotoInput({
   name,
   required = false,
+  allowPdf = false,
+  cameraOnly = false,
   facingMode = "environment",
   hint,
   watermark = true,
@@ -53,6 +57,10 @@ export function PhotoInput({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const objectUrlRef = useRef<string | null>(null);
+
+  const accept = allowPdf
+    ? "image/jpeg,image/png,image/webp,application/pdf"
+    : "image/jpeg,image/png,image/webp";
 
   useEffect(() => {
     return () => {
@@ -96,10 +104,18 @@ export function PhotoInput({
     showPreview(file);
   }
 
+  function onPick(event: React.ChangeEvent<HTMLInputElement>) {
+    showPreview(event.target.files?.[0] ?? null);
+  }
+
   async function openCamera() {
     setError(null);
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError("Perangkat ini tidak mendukung kamera.");
+      setError(
+        cameraOnly
+          ? "Perangkat ini tidak mendukung kamera."
+          : "Perangkat ini tidak mendukung kamera. Gunakan tombol Pilih file.",
+      );
       return;
     }
     try {
@@ -110,7 +126,11 @@ export function PhotoInput({
       streamRef.current = stream;
       setCameraOn(true);
     } catch {
-      setError("Kamera tidak dapat diakses. Izinkan akses kamera lalu coba lagi.");
+      setError(
+        cameraOnly
+          ? "Kamera tidak dapat diakses. Izinkan akses kamera lalu coba lagi."
+          : "Kamera tidak dapat diakses. Gunakan tombol Pilih file.",
+      );
     }
   }
 
@@ -151,8 +171,11 @@ export function PhotoInput({
         ref={fileRef}
         name={name}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={accept}
         required={required}
+        onChange={onPick}
+        onClick={cameraOnly ? (event) => event.preventDefault() : undefined}
+        tabIndex={cameraOnly ? -1 : undefined}
         style={visuallyHidden}
       />
 
@@ -183,12 +206,17 @@ export function PhotoInput({
               style={{ width: "100%", maxHeight: 360, objectFit: "contain", borderRadius: 8 }}
             />
           ) : fileName ? (
-            <span className="small muted">Foto siap dikirim.</span>
+            <span className="small muted">Berkas siap dikirim.</span>
           ) : null}
           <div className="form-actions" style={{ flexWrap: "wrap" }}>
             <button type="button" className="btn btn-primary" onClick={openCamera}>
               {preview ? "Ambil ulang" : "Ambil foto"}
             </button>
+            {cameraOnly ? null : (
+              <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
+                Pilih file
+              </button>
+            )}
             {fileName ? (
               <button
                 type="button"
