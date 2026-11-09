@@ -494,12 +494,11 @@ export default async function InvoiceDetailPage({
               <Field label="Tanggal bayar">
                 <input name="paidAt" type="date" defaultValue={inputDate(new Date())} />
               </Field>
-              <Field label="Bukti transfer (JPG/PNG/WEBP/PDF)" hint="Maks. 4 MB" full>
+              <Field label="Bukti transfer (foto kamera)" hint="Maks. 4 MB" full>
                 <PhotoInput
                   name="proof"
                   required
-                  allowPdf
-                  hint="Foto langsung dari kamera, atau pilih file/PDF."
+                  hint="Foto langsung dari kamera agar terbaru."
                 />
               </Field>
               <Field label="Catatan" full>
@@ -574,8 +573,8 @@ export default async function InvoiceDetailPage({
                   <Field label="Tanggal bayar">
                     <input name="paidAt" type="date" defaultValue={inputDate(new Date())} />
                   </Field>
-                  <Field label="Bukti (JPG/PNG/PDF)" hint="Maks. 4 MB, opsional untuk tunai">
-                    <PhotoInput name="proof" allowPdf />
+                  <Field label="Bukti (foto kamera)" hint="Maks. 4 MB, opsional untuk tunai">
+                    <PhotoInput name="proof" />
                   </Field>
                   <Field label="Catatan" full>
                     <input name="notes" placeholder="Opsional" />
